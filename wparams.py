@@ -1,8 +1,3 @@
-"""
-python3.7
-Created on Fri Sep 13 20:35:18 2019
-@author:Hiroshi
-"""
 def write_params(mu, U, Nsample, filename):
     file = open("params.dat", "w")
 #    mu, U, Nsample = 12, 30, 100
