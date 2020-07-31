@@ -1,9 +1,3 @@
-"""
-python3.7
-Created on Tue Sep 17 19:25:32 2019
-@author:Hiroshi
-"""
-
 import scipy as sp
 import matplotlib.pyplot as plt
 from subprocess import run
