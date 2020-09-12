@@ -21,7 +21,7 @@ for U in U_list:
     # params.datのファイル名
     filename = f"U={U}," + f"s={s}" + ".dat"
     wparams.write_params(mu, U, Nsample, filename)
-    # run(["./a.out","params.dat"])
+    run(["./a.out","params.dat"])
     corr_a_list.append(read_dat_mod.readfile(filename)[0])
     corr_a_list.append(read_dat_mod.readfile(filename)[1])
 
