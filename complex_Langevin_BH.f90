@@ -40,7 +40,7 @@ contains
         end do
     end subroutine
 
-    logical function is_neighbor_pbc(x, xx, period)
+    logical function is_neighbor_pbc(x, xx, period)!
         integer :: x, xx, period
         is_neighbor_pbc = (modulo(x+1, period) == modulo(xx, period)) .or. (modulo(x-1, period) == modulo(xx, period))
     end function
@@ -73,12 +73,12 @@ contains
         end do
     end subroutine
 
-    complex(kind(0d0)) function da(a, a_ast, tau, x)
+    complex(kind(0d0)) function da(a, a_ast, tau, x)! a, a_astからdaを計算
         integer :: tau, x, y, i
         complex(kind(0d0)), intent(in) :: a(:,:), a_ast(:,:)
 
         da = a(modulo(tau, Ntau)+1, x)
-        if ((tau-1) == 0) then
+        if ((tau-1) == 0) then ! tauが周期的なのでその処理
             da = da - a(Ntau, x)
         else
             da = da - a(tau-1, x)
@@ -95,12 +95,12 @@ contains
         da = 2d0 * da
     end function
 
-    complex(kind(0d0)) function da_ast(a, a_ast, tau, x)
+    complex(kind(0d0)) function da_ast(a, a_ast, tau, x)!da_astを計算
         integer :: tau, x, y, i
         complex(kind(0d0)), intent(in) :: a(:,:), a_ast(:,:)
 
         da_ast = a_ast(modulo(tau, Ntau)+1, x)
-        if ((tau-1) == 0) then
+        if ((tau-1) == 0) then!tauが周期的なのでその処理
             da_ast = da_ast - a_ast(Ntau, x)
         else
             da_ast = da_ast - a_ast(tau-1, x)
@@ -117,7 +117,7 @@ contains
         da_ast = 2d0 * da_ast
     end function
 
-    subroutine set_dw()
+    subroutine set_dw()!dwにガウシアンノイズを代入
         integer :: i, j
         do j = 1, Dx
             do i = 1, Ntau
@@ -133,7 +133,7 @@ contains
         a_ast = complex(y, 0d0)
     end subroutine
 
-    subroutine do_langevin_loop()
+    subroutine do_langevin_loop()! Langevin方程式を解く部分(このプログラムでは未使用)
         complex(kind(0d0)) :: a_next(Ntau, Dx), a_ast_next(Ntau, Dx)
         double precision :: s, sigma
         integer :: x, tau
@@ -147,6 +147,7 @@ contains
                 do tau = 1, Ntau
                     a_next(tau, x) = a(tau, x) + da(a, a_ast, tau, x) * ds
                     a_ast_next(tau, x) = a_ast(tau, x) + da_ast(a, a_ast, tau, x) * ds
+                    !a_nextが発散してたらis_convergeを更新
                     if ( isnan(real(a_next(tau, x))) .or. isnan(imag(a_next(tau, x))) ) then
                         is_converge = .false.
                         return
@@ -161,7 +162,7 @@ contains
         end do
     end subroutine
 
-    subroutine do_langevin_loop_RK()
+    subroutine do_langevin_loop_RK()! Langevin方程式を解く部分
         complex(kind(0d0)) :: a_mid(Ntau, Dx), a_ast_mid(Ntau, Dx), a_next(Ntau, Dx), a_ast_next(Ntau, Dx)
         double precision :: s, sigma
         integer :: x, tau
