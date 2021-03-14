@@ -3,4 +3,5 @@ __pycache__
 *.dat
 *.mod
 !params.dat
-
+.sqm
+.gitignore
