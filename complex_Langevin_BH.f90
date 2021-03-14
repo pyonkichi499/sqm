@@ -219,6 +219,8 @@ end module
 program complex_Langevin_BH
     use functions_module
     implicit none
+    
+    ! 変数の宣言
     integer :: i, j, Nsample, Nfailed
     double precision :: v
     complex(kind(0d0)) :: corrfunc(Nx)
@@ -232,14 +234,22 @@ program complex_Langevin_BH
     seed = 0
     call random_seed(put=seed)
 
+    ! set_nn() の呼び出し
+    ! idx, (x, y, z)の変換を行うための配列が定義される
     call set_nn()
 
+    ! 実行時引数の読み取り
+    ! 実行時に引数が与えられなかった場合は245行目の警告を表示
     call get_command_argument(1, arg)
     if (len_trim(arg) == 0) then
         stop "parameter file is required."
     end if
+    
+    ! 実行時引数で与えられた(params.dat)を開く
     open(11, file=trim(arg), status='old', action='read')
+    ! (params.datの)&params部分を読み込む
     read(11, nml=params)
+    ! &sampling_setting部分を読み込む
     read(11, nml=sampling_setting)
     close(11)
 
