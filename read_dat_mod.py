@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import seaborn
-seaborn.set(style="darkgrid", font_scale=1.5)
+seaborn.set_theme(style="darkgrid", font_scale=1.5)
 matplotlib.use("Agg")
 
 def read_dat(filename):
