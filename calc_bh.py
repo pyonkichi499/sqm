@@ -1,4 +1,4 @@
-import scipy as sp
+import numpy as np
 import matplotlib.pyplot as plt
 from subprocess import run
 
@@ -11,7 +11,7 @@ U_0 = 5
 U_end = 40
 s = "1d0" # used only filename
 Nsample = 200
-U_list = sp.arange(U_0, U_end, 10)
+U_list = np.arange(U_0, U_end, 10)
 corr_a_list = []
 corr_err = []
 
