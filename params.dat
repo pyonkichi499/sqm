@@ -1,0 +1,11 @@
+&params
+mu = 2.0
+U = 5
+dtau = 0.3d0
+ds = 0.3d-4
+s_end = 1d0
+datfilename = "U=5_s=1d0.dat"
+/
+&sampling_setting
+Nsample = 200
+/
