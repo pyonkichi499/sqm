@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  fortran-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gfortran
+        run: sudo apt-get update && sudo apt-get install -y gfortran
+      - name: Compile and run Fortran tests
+        run: |
+          cd fortran
+          gfortran -O2 -Wall -Wextra -o test_functions functions_module.f90 test_functions.f90
+          ./test_functions
+      - name: Verify main program compiles
+        run: |
+          cd fortran
+          gfortran -O2 -Wall -Wextra -o a.out functions_module.f90 complex_Langevin_BH.f90
+
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rye
+        uses: eifinger/setup-rye@v4
+        with:
+          enable-cache: true
+      - name: Sync dependencies
+        run: rye sync
+      - name: Lint with ruff
+        run: rye run ruff check .
+      - name: Check formatting
+        run: rye run ruff format --check .
+
+  python-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rye
+        uses: eifinger/setup-rye@v4
+        with:
+          enable-cache: true
+      - name: Pin Python version
+        run: rye pin ${{ matrix.python-version }}
+      - name: Sync dependencies
+        run: rye sync
+      - name: Run tests with coverage
+        run: rye run pytest tests/ -v --cov=src/sqm --cov-report=term-missing
+      - name: Type check with mypy
+        run: rye run mypy src/sqm/
