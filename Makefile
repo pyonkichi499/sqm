@@ -19,7 +19,7 @@ run_tests: $(MODULE) $(TEST)
 	$(FC) $(FFLAGS) $^ -o $@
 
 run: a.out | $(OUTDIR)
-	python calc_bh.py
+	python sweep.py
 
 $(OUTDIR):
 	mkdir -p $(OUTDIR)

@@ -1,7 +1,7 @@
 [project]
 name = "sqm"
 version = "0.1.0"
-description = "Add your description here"
+description = "Bose-Hubbard model simulation using complex Langevin method"
 authors = [
     { name = "terauchi hiroshi", email = "terauchi.hiroshi@cloud-ace.jp" }
 ]
@@ -11,7 +11,12 @@ dependencies = [
     "numpy>=1.26.4",
 ]
 readme = "README.md"
-requires-python = ">= 3.8"
+requires-python = ">= 3.10"
+
+[project.scripts]
+sqm-simulate = "simulate:main"
+sqm-sweep = "sweep:main"
+sqm-collect = "collect:main"
 
 [build-system]
 requires = ["hatchling"]
