@@ -1,7 +1,8 @@
 """1つの(U, mu)パラメータ点に対するシミュレーション実行"""
 import os
-import argparse
 from subprocess import run
+
+import click
 
 import wparams
 
@@ -18,18 +19,12 @@ def run_one(U, mu, Nsample=200, outdir="output", **kw):
     return datfilename
 
 
-def main():
-    parser = argparse.ArgumentParser(description="1点のシミュレーション実行")
-    parser.add_argument("--U", type=float,
-                        default=float(os.environ.get("SQM_U", 20)))
-    parser.add_argument("--mu", type=float,
-                        default=float(os.environ.get("SQM_MU", 0)))
-    parser.add_argument("--Nsample", type=int,
-                        default=int(os.environ.get("SQM_NSAMPLE", 200)))
-    parser.add_argument("--outdir",
-                        default=os.environ.get("SQM_OUTDIR", "output"))
-    args = parser.parse_args()
-
+@click.command()
+@click.option("--U", "u_val", type=float, default=20, envvar="SQM_U")
+@click.option("--mu", type=float, default=0, envvar="SQM_MU")
+@click.option("--Nsample", "nsample", type=int, default=200, envvar="SQM_NSAMPLE")
+@click.option("--outdir", default="output", envvar="SQM_OUTDIR")
+def main(u_val, mu, nsample, outdir):
     # Cloud Run Jobs: CLOUD_RUN_TASK_INDEX から sweep パラメータを自動算出
     task_index = os.environ.get("CLOUD_RUN_TASK_INDEX")
     if task_index is not None:
@@ -38,13 +33,13 @@ def main():
         step = float(os.environ.get("SQM_SWEEP_STEP", 2))
         val = start + int(task_index) * step
         if sweep == "mu":
-            args.mu = val
+            mu = val
         else:
-            args.U = val
+            u_val = val
 
-    print(f"Running: U={args.U}, mu={args.mu}, Nsample={args.Nsample}")
-    datfile = run_one(args.U, args.mu, args.Nsample, args.outdir)
-    print(f"Output: {datfile}")
+    click.echo(f"Running: U={u_val}, mu={mu}, Nsample={nsample}")
+    datfile = run_one(u_val, mu, nsample, outdir)
+    click.echo(f"Output: {datfile}")
 
 
 if __name__ == "__main__":

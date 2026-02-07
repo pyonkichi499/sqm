@@ -8,7 +8,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir numpy matplotlib seaborn pytest
+RUN pip install --no-cache-dir numpy matplotlib seaborn click pytest
 
 COPY functions_module.f90 complex_Langevin_BH.f90 Makefile ./
 RUN make build
@@ -27,7 +27,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir numpy matplotlib seaborn
+RUN pip install --no-cache-dir numpy matplotlib seaborn click
 
 COPY --from=test /app/a.out ./
 COPY wparams.py read_dat_mod.py simulate.py sweep.py collect.py ./

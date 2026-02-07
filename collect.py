@@ -2,6 +2,8 @@
 import os
 import re
 import sys
+
+import click
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -37,7 +39,7 @@ def collect_results(outdir):
             mean, err = analyze_one(os.path.join(outdir, fname))
             results[(U, mu)] = (mean, err)
         except Exception as e:
-            print(f"Skip {fname}: {e}")
+            click.echo(f"Skip {fname}: {e}")
     return results
 
 
@@ -57,12 +59,12 @@ def plot_sweep(sweep_values, corr_mean_list, corr_err_list,
     return figname
 
 
-def main():
-    outdir = sys.argv[1] if len(sys.argv) > 1 else "output"
-
+@click.command()
+@click.argument("outdir", default="output")
+def main(outdir):
     results = collect_results(outdir)
     if not results:
-        print(f"No .dat files found in {outdir}/")
+        click.echo(f"No .dat files found in {outdir}/")
         sys.exit(1)
 
     # パラメータ構造を自動判定: U or mu のどちらが変動しているか
@@ -76,8 +78,8 @@ def main():
         sweep_name, sweep_values = "U", U_values
         fixed_name, fixed_value = "mu", mu_values[0]
     else:
-        print(f"Mixed parameters: {len(U_values)} U values, {len(mu_values)} mu values")
-        print("Cannot auto-detect sweep axis. Use sweep.py for structured sweeps.")
+        click.echo(f"Mixed parameters: {len(U_values)} U values, {len(mu_values)} mu values")
+        click.echo("Cannot auto-detect sweep axis. Use sweep.py for structured sweeps.")
         sys.exit(1)
 
     corr_mean_list = []
@@ -93,7 +95,7 @@ def main():
         sweep_values, corr_mean_list, corr_err_list,
         sweep_name, fixed_name, fixed_value, Nsample, outdir,
     )
-    print(f"Saved {figname}")
+    click.echo(f"Saved {figname}")
 
 
 if __name__ == "__main__":

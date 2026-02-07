@@ -1,11 +1,13 @@
 """simulate.py のテスト"""
 import os
-import sys
 from unittest.mock import patch, MagicMock
+
 import pytest
+from click.testing import CliRunner
 
 import simulate
-import wparams
+
+runner = CliRunner()
 
 
 class TestRunOne:
@@ -76,94 +78,74 @@ class TestRunOne:
 class TestMainArgParsing:
     def test_default_values(self):
         """デフォルト引数値"""
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("SQM_") and k != "CLOUD_RUN_TASK_INDEX"}
-        with patch.dict(os.environ, env, clear=True), \
-             patch("simulate.run_one") as mock_run_one, \
-             patch("sys.argv", ["simulate.py"]):
-            mock_run_one.return_value = "output/test.dat"
-            simulate.main()
-        args = mock_run_one.call_args
-        assert args[0][0] == 20    # U default
-        assert args[0][1] == 0     # mu default
-        assert args[0][2] == 200   # Nsample default
+        with patch("simulate.run_one") as mock:
+            mock.return_value = "output/test.dat"
+            result = runner.invoke(simulate.main, [])
+        assert result.exit_code == 0
+        assert mock.call_args[0][0] == 20    # U default
+        assert mock.call_args[0][1] == 0     # mu default
+        assert mock.call_args[0][2] == 200   # Nsample default
 
     def test_cli_args(self):
         """CLI引数が反映されること"""
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("SQM_") and k != "CLOUD_RUN_TASK_INDEX"}
-        with patch.dict(os.environ, env, clear=True), \
-             patch("simulate.run_one") as mock_run_one, \
-             patch("sys.argv", ["simulate.py", "--U", "15", "--mu", "3", "--Nsample", "500"]):
-            mock_run_one.return_value = "output/test.dat"
-            simulate.main()
-        args = mock_run_one.call_args
-        assert args[0][0] == 15
-        assert args[0][1] == 3
-        assert args[0][2] == 500
+        with patch("simulate.run_one") as mock:
+            mock.return_value = "output/test.dat"
+            result = runner.invoke(simulate.main,
+                                   ["--U", "15", "--mu", "3", "--Nsample", "500"])
+        assert result.exit_code == 0
+        assert mock.call_args[0][0] == 15
+        assert mock.call_args[0][1] == 3
+        assert mock.call_args[0][2] == 500
 
     def test_env_vars(self):
-        """環境変数からの設定"""
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("SQM_") and k != "CLOUD_RUN_TASK_INDEX"}
-        env.update({"SQM_U": "30", "SQM_MU": "7", "SQM_NSAMPLE": "1000"})
-        with patch.dict(os.environ, env, clear=True), \
-             patch("simulate.run_one") as mock_run_one, \
-             patch("sys.argv", ["simulate.py"]):
-            mock_run_one.return_value = "output/test.dat"
-            simulate.main()
-        args = mock_run_one.call_args
-        assert args[0][0] == 30
-        assert args[0][1] == 7
-        assert args[0][2] == 1000
+        """環境変数からの設定 (click envvar)"""
+        env = {"SQM_U": "30", "SQM_MU": "7", "SQM_NSAMPLE": "1000"}
+        with patch("simulate.run_one") as mock:
+            mock.return_value = "output/test.dat"
+            result = runner.invoke(simulate.main, [], env=env)
+        assert result.exit_code == 0
+        assert mock.call_args[0][0] == 30
+        assert mock.call_args[0][1] == 7
+        assert mock.call_args[0][2] == 1000
 
 
 class TestCloudRunTaskIndex:
     def test_mu_sweep(self):
         """CLOUD_RUN_TASK_INDEXでmuスイープ"""
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("SQM_") and k != "CLOUD_RUN_TASK_INDEX"}
-        env.update({
+        env = {
             "CLOUD_RUN_TASK_INDEX": "3",
             "SQM_SWEEP": "mu",
             "SQM_SWEEP_START": "0",
             "SQM_SWEEP_STEP": "2",
-        })
-        with patch.dict(os.environ, env, clear=True), \
-             patch("simulate.run_one") as mock_run_one, \
-             patch("sys.argv", ["simulate.py"]):
-            mock_run_one.return_value = "output/test.dat"
-            simulate.main()
+        }
+        with patch("simulate.run_one") as mock:
+            mock.return_value = "output/test.dat"
+            result = runner.invoke(simulate.main, [], env=env)
+        assert result.exit_code == 0
         # mu = 0 + 3 * 2 = 6
-        assert mock_run_one.call_args[0][1] == 6.0
+        assert mock.call_args[0][1] == 6.0
 
     def test_u_sweep(self):
         """CLOUD_RUN_TASK_INDEXでUスイープ"""
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("SQM_") and k != "CLOUD_RUN_TASK_INDEX"}
-        env.update({
+        env = {
             "CLOUD_RUN_TASK_INDEX": "2",
             "SQM_SWEEP": "U",
             "SQM_SWEEP_START": "5",
             "SQM_SWEEP_STEP": "5",
-        })
-        with patch.dict(os.environ, env, clear=True), \
-             patch("simulate.run_one") as mock_run_one, \
-             patch("sys.argv", ["simulate.py"]):
-            mock_run_one.return_value = "output/test.dat"
-            simulate.main()
+        }
+        with patch("simulate.run_one") as mock:
+            mock.return_value = "output/test.dat"
+            result = runner.invoke(simulate.main, [], env=env)
+        assert result.exit_code == 0
         # U = 5 + 2 * 5 = 15
-        assert mock_run_one.call_args[0][0] == 15.0
+        assert mock.call_args[0][0] == 15.0
 
     def test_default_sweep_is_mu(self):
         """SQM_SWEEP未設定時はmuスイープ"""
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("SQM_") and k != "CLOUD_RUN_TASK_INDEX"}
-        env.update({"CLOUD_RUN_TASK_INDEX": "1"})
-        with patch.dict(os.environ, env, clear=True), \
-             patch("simulate.run_one") as mock_run_one, \
-             patch("sys.argv", ["simulate.py"]):
-            mock_run_one.return_value = "output/test.dat"
-            simulate.main()
+        env = {"CLOUD_RUN_TASK_INDEX": "1"}
+        with patch("simulate.run_one") as mock:
+            mock.return_value = "output/test.dat"
+            result = runner.invoke(simulate.main, [], env=env)
+        assert result.exit_code == 0
         # default: mu = 0 + 1 * 2 = 2
-        assert mock_run_one.call_args[0][1] == 2.0
+        assert mock.call_args[0][1] == 2.0
