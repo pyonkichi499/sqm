@@ -3,59 +3,64 @@ import numpy as np
 import matplotlib.pyplot as plt
 from subprocess import run
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from itertools import product
 
 import read_dat_mod
 import wparams
 
-U_0 = 5
-U_end = 40
-s = "1d0"  # used only filename
+# パラメータグリッド
+U_list = np.arange(5, 40, 10)
+mu_list = np.arange(0, 20, 2)
 Nsample = 200
-U_list = np.arange(U_0, U_end, 10)
+s = "1d0"  # ファイル名用
 
 
-def run_simulation(U):
-    """1つのU値に対するシミュレーション実行と解析を行う"""
-    mu = 0.4 * U
+def run_simulation(params):
+    """1つの(U, mu)に対するシミュレーション実行と解析を行う"""
+    U, mu = params
 
-    datfilename = f"U={U},s={s}.dat"
-    paramsfile = f"params_U={U}.dat"
+    datfilename = f"U={U},mu={mu},s={s}.dat"
+    paramsfile = f"params_U={U}_mu={mu}.dat"
 
-    # 固有のパラメータファイルを書き出し
     wparams.write_params(mu, U, Nsample, datfilename, paramsfile=paramsfile)
-
-    # Fortranシミュレーション実行
     run(["./a.out", paramsfile])
-
-    # 一時パラメータファイルを削除
     os.remove(paramsfile)
 
-    # 解析
     corr_val = read_dat_mod.readfile(datfilename)
-    return U, corr_val
+    return U, mu, corr_val
 
 
 if __name__ == "__main__":
-    # 利用可能なCPU数（最大でU_listの長さまで）
-    max_workers = min(len(U_list), os.cpu_count() or 1)
-    print(f"Running {len(U_list)} simulations with {max_workers} workers")
+    param_grid = list(product(U_list, mu_list))
+    max_workers = min(len(param_grid), os.cpu_count() or 1)
+    print(f"Running {len(param_grid)} simulations with {max_workers} workers")
 
     results = {}
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(run_simulation, U): U for U in U_list}
+        futures = {executor.submit(run_simulation, p): p for p in param_grid}
         for future in as_completed(futures):
-            U = futures[future]
+            p = futures[future]
             try:
-                U_val, corr_val = future.result()
-                results[U_val] = corr_val
-                print(f"U={U_val} completed")
+                U, mu, corr_val = future.result()
+                results[(U, mu)] = corr_val
+                print(f"U={U}, mu={mu} completed")
             except Exception as e:
-                print(f"U={U} failed: {e}")
+                print(f"U={p[0]}, mu={p[1]} failed: {e}")
 
-    # U順にソートして結果をまとめる
-    sorted_Us = sorted(results.keys())
-    corr_a_list = [results[U] for U in sorted_Us]
+    # 結果を2Dグリッドに整形
+    corr_grid = np.full((len(U_list), len(mu_list)), np.nan)
+    for i, U in enumerate(U_list):
+        for j, mu in enumerate(mu_list):
+            if (U, mu) in results:
+                corr_grid[i, j] = results[(U, mu)]
 
+    # ヒートマップで位相図を描く
     plt.close()
-    plt.errorbar(sorted_Us, corr_a_list)
-    plt.savefig(f"U={U_0}~{U_end},N={Nsample}.png")
+    plt.figure(dpi=100)
+    plt.pcolormesh(mu_list, U_list, corr_grid, shading="nearest")
+    plt.colorbar(label=r"$\langle a_0 a_{N/2}^* \rangle$")
+    plt.xlabel(r"$\mu$")
+    plt.ylabel(r"$U$")
+    plt.title(f"N={Nsample}")
+    plt.savefig(f"phase_diagram_N={Nsample}.png", bbox_inches="tight")
+    print(f"Saved phase_diagram_N={Nsample}.png")
