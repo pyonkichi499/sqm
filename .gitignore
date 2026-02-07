@@ -4,4 +4,4 @@ __pycache__
 *.mod
 !params.dat
 .sqm
-.gitignore
+run_tests
