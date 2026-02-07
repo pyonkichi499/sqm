@@ -3,6 +3,7 @@
 TDD の Red-Green-Refactor サイクルに従い、各ラウンドごとにテストを記述。
 conftest.py により np.random.seed(42) が全テストで自動適用される。
 """
+
 from __future__ import annotations
 
 import numpy as np

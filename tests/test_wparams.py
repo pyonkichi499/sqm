@@ -34,8 +34,14 @@ def test_write_params_カスタム値が反映される(tmp_path):
     """カスタムパラメータが正しく書き込まれる"""
     params_file = tmp_path / "params.dat"
     write_params(
-        mu=1.0, U=5.0, Nsample=50, filename="out.dat",
-        paramsfile=str(params_file), dtau="0.1d0", ds="0.1d-5", s_end="2d0"
+        mu=1.0,
+        U=5.0,
+        Nsample=50,
+        filename="out.dat",
+        paramsfile=str(params_file),
+        dtau="0.1d0",
+        ds="0.1d-5",
+        s_end="2d0",
     )
     content = params_file.read_text()
     assert "dtau = 0.1d0" in content

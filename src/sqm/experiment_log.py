@@ -122,8 +122,7 @@ class ExperimentLog:
             if total > 0 and n_failed / total > 0.5:
                 failure_rate = n_failed / total * 100
                 warnings.append(
-                    f"High failure rate in '{name}': "
-                    f"{failure_rate:.1f}% ({n_failed}/{total} 失敗)"
+                    f"High failure rate in '{name}': {failure_rate:.1f}% ({n_failed}/{total} 失敗)"
                 )
         return warnings
 

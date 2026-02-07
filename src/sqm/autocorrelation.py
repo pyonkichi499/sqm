@@ -11,6 +11,7 @@ Monte Carlo / Langevin シミュレーションデータの自己相関を解析
 - thin_data: データの間引き
 - corrected_error: 自己相関を考慮した補正済み誤差推定
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -163,10 +164,9 @@ def detect_thermalization(
     if n_windows < 3:
         return 0
 
-    window_means = np.array([
-        np.mean(data[i * window_size : (i + 1) * window_size])
-        for i in range(n_windows)
-    ])
+    window_means = np.array(
+        [np.mean(data[i * window_size : (i + 1) * window_size]) for i in range(n_windows)]
+    )
 
     # 後半のウィンドウ平均から定常状態の統計を推定
     # 後半の50%を定常状態と仮定

@@ -23,6 +23,7 @@ from sqm.read_dat_mod import (
 # 1. jackknife() のテスト
 # ============================================================
 
+
 class TestJackknife:
     """ジャックナイフ法のテスト群"""
 
@@ -72,8 +73,10 @@ class TestJackknife:
 # 2. read_dat() のテスト
 # ============================================================
 
-def _create_test_binary(filepath: Path, Nx: int = 4, n_samples: int = 2,
-                        U: float = 1.0, mu: float = 0.5, Ntau: int = 10) -> None:
+
+def _create_test_binary(
+    filepath: Path, Nx: int = 4, n_samples: int = 2, U: float = 1.0, mu: float = 0.5, Ntau: int = 10
+) -> None:
     """テスト用の Fortran バイナリファイルを作成するヘルパー。
 
     Fortran の unformatted sequential write は
@@ -81,28 +84,26 @@ def _create_test_binary(filepath: Path, Nx: int = 4, n_samples: int = 2,
     という形式で各レコードを書く。
     """
     # ヘッダーレコード: Nx(i4), U(f8), mu(f8), Ntau(i4) = 4+8+8+4 = 24 bytes
-    header_data = struct.pack('<i d d i', Nx, U, mu, Ntau)
+    header_data = struct.pack("<i d d i", Nx, U, mu, Ntau)
     record_len = len(header_data)  # 24
-    header_record = struct.pack('<i', record_len) + header_data + struct.pack('<i', record_len)
+    header_record = struct.pack("<i", record_len) + header_data + struct.pack("<i", record_len)
 
-    body_records = b''
+    body_records = b""
     for i in range(n_samples):
         # a: Nx 個の complex128 (各 16 bytes)
         # a_ast: Nx 個の complex128 (各 16 bytes)
         a_values = [complex(float(j + 1 + i * 0.1), 0.0) for j in range(Nx)]
         a_ast_values = [complex(float(j + 1 + i * 0.1), 0.0) for j in range(Nx)]
 
-        body_data = b''
+        body_data = b""
         for v in a_values:
-            body_data += struct.pack('<d d', v.real, v.imag)
+            body_data += struct.pack("<d d", v.real, v.imag)
         for v in a_ast_values:
-            body_data += struct.pack('<d d', v.real, v.imag)
+            body_data += struct.pack("<d d", v.real, v.imag)
 
         body_record_len = len(body_data)  # Nx * 16 * 2
         body_records += (
-            struct.pack('<i', body_record_len)
-            + body_data
-            + struct.pack('<i', body_record_len)
+            struct.pack("<i", body_record_len) + body_data + struct.pack("<i", body_record_len)
         )
 
     filepath.write_bytes(header_record + body_records)
@@ -116,10 +117,10 @@ class TestReadDat:
         _create_test_binary(filepath, Nx=4, U=1.5, mu=0.5, Ntau=10)
         header, _ = read_dat(filepath)
 
-        assert header[0]['Nx'] == 4
-        assert header[0]['U'] == pytest.approx(1.5)
-        assert header[0]['mu'] == pytest.approx(0.5)
-        assert header[0]['Ntau'] == 10
+        assert header[0]["Nx"] == 4
+        assert header[0]["U"] == pytest.approx(1.5)
+        assert header[0]["mu"] == pytest.approx(0.5)
+        assert header[0]["Ntau"] == 10
 
     def test_read_dat_ボディを正しく読み込む(self, tmp_path: Path) -> None:
         filepath = tmp_path / "test.dat"
@@ -128,8 +129,8 @@ class TestReadDat:
 
         assert len(body) == 3
         # 各ボディレコードに 'a' と 'a_ast' フィールドがある
-        assert 'a' in body.dtype.names
-        assert 'a_ast' in body.dtype.names
+        assert "a" in body.dtype.names
+        assert "a_ast" in body.dtype.names
 
     def test_read_dat_存在しないファイルでFileNotFoundError(self, tmp_path: Path) -> None:
         filepath = tmp_path / "nonexistent.dat"
@@ -138,7 +139,7 @@ class TestReadDat:
 
     def test_read_dat_空ファイルでValueError(self, tmp_path: Path) -> None:
         filepath = tmp_path / "empty.dat"
-        filepath.write_bytes(b'')
+        filepath.write_bytes(b"")
         with pytest.raises(ValueError, match="空"):
             read_dat(filepath)
 
@@ -146,6 +147,7 @@ class TestReadDat:
 # ============================================================
 # 3. compute_correlation() のテスト
 # ============================================================
+
 
 class TestComputeCorrelation:
     """compute_correlation() のテスト群"""
@@ -203,6 +205,7 @@ class TestComputeCorrelation:
 # 4. plot_correlation() のテスト
 # ============================================================
 
+
 class TestPlotCorrelation:
     """plot_correlation() のテスト群"""
 
@@ -212,8 +215,9 @@ class TestPlotCorrelation:
         corr_err = np.array([0.1, 0.05, 0.02])
         savepath = tmp_path / "test_plot.png"
 
-        plot_correlation(xarr, corr_mean, corr_err,
-                         mu=0.5, U=1.0, Ntau=10, N=100, savepath=savepath)
+        plot_correlation(
+            xarr, corr_mean, corr_err, mu=0.5, U=1.0, Ntau=10, N=100, savepath=savepath
+        )
 
         assert savepath.exists()
         assert savepath.stat().st_size > 0
@@ -225,8 +229,9 @@ class TestPlotCorrelation:
         # 存在しないネストされたディレクトリ
         savepath = tmp_path / "deep" / "nested" / "dir" / "plot.png"
 
-        plot_correlation(xarr, corr_mean, corr_err,
-                         mu=0.5, U=1.0, Ntau=10, N=100, savepath=savepath)
+        plot_correlation(
+            xarr, corr_mean, corr_err, mu=0.5, U=1.0, Ntau=10, N=100, savepath=savepath
+        )
 
         assert savepath.exists()
         assert savepath.stat().st_size > 0
@@ -235,6 +240,7 @@ class TestPlotCorrelation:
 # ============================================================
 # 5. readfile() のテスト
 # ============================================================
+
 
 class TestReadfile:
     """readfile() のテスト群"""

@@ -3,6 +3,7 @@
 シミュレーションパラメータを一元管理するための dataclass 群と、
 YAML / JSON によるシリアライゼーションを提供する。
 """
+
 from __future__ import annotations
 
 import json

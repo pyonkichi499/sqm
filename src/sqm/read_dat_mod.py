@@ -55,33 +55,21 @@ def read_dat(filename: str | Path) -> tuple[np.ndarray, np.ndarray]:
     if filepath.stat().st_size == 0:
         raise ValueError(f"ファイルが空です: {filepath}")
 
-    head, tail = ('head', '<i'), ('tail', '<i')
-    header_dtype = np.dtype([
-        head,
-        ('Nx', '<i'),
-        ('U', '<f8'),
-        ('mu', '<f8'),
-        ('Ntau', '<i'),
-        tail])
+    head, tail = ("head", "<i"), ("tail", "<i")
+    header_dtype = np.dtype([head, ("Nx", "<i"), ("U", "<f8"), ("mu", "<f8"), ("Ntau", "<i"), tail])
 
-    with open(filepath, 'rb') as fd:
+    with open(filepath, "rb") as fd:
         header = np.fromfile(fd, dtype=header_dtype, count=1)
 
         if len(header) == 0:
             raise ValueError(f"ヘッダーが空です: {filepath}")
 
-        Nx = int(header[0]['Nx'])
+        Nx = int(header[0]["Nx"])
 
         if not 1 <= Nx <= 1000:
-            raise ValueError(
-                f"Nx の値が不正です (1-1000 の範囲外): {Nx}"
-            )
+            raise ValueError(f"Nx の値が不正です (1-1000 の範囲外): {Nx}")
 
-        body_dtype = np.dtype([
-            head,
-            ('a', f'<{Nx}c16'),
-            ('a_ast', f'<{Nx}c16'),
-            tail])
+        body_dtype = np.dtype([head, ("a", f"<{Nx}c16"), ("a_ast", f"<{Nx}c16"), tail])
         body = np.fromfile(fd, dtype=body_dtype, count=-1)
 
     logger.debug("ヘッダー読み込み完了: Nx=%d", Nx)
@@ -210,14 +198,14 @@ def readfile(filename: str | Path) -> float:
     filepath = Path(filename)
     header, body = read_dat(filepath)
 
-    a_list = [b['a'] for b in body]
-    a_ast_list = [b['a_ast'] for b in body]
+    a_list = [b["a"] for b in body]
+    a_ast_list = [b["a_ast"] for b in body]
     N: int = len(body)
 
     Ntau: int = int(header[0]["Ntau"])
     U: float = float(header[0]["U"])
     mu: float = float(header[0]["mu"])
-    Nx: int = int(header[0]['Nx'])
+    Nx: int = int(header[0]["Nx"])
 
     corr_mean, corr_err = compute_correlation(a_list, a_ast_list, Nx)
 
@@ -225,8 +213,7 @@ def readfile(filename: str | Path) -> float:
 
     xarr: npt.NDArray[np.float64] = np.arange(Nx, dtype=np.float64)
     savepath = (
-        filepath.parent.parent / "figures"
-        / f"mu={mu:.1f},U={U:.1f},tau={Ntau:.0f},N={N}.png"
+        filepath.parent.parent / "figures" / f"mu={mu:.1f},U={U:.1f},tau={Ntau:.0f},N={N}.png"
     )
     plot_correlation(xarr, corr_mean, corr_err, mu, U, Ntau, N, savepath)
 

@@ -6,6 +6,7 @@ TDD Round 3: SweepConfig
 TDD Round 4: SeedConfig
 TDD Round 5: Config (統合 + YAML/JSON シリアライゼーション)
 """
+
 from pathlib import Path
 
 import pytest
@@ -87,8 +88,12 @@ def test_SweepConfig_両方スイープでValueError():
     """UとmuをどちらもスイープするとValueError"""
     with pytest.raises(ValueError):
         SweepConfig(
-            U_start=0, U_end=10, U_step=1,
-            mu_start=0, mu_end=10, mu_step=1,
+            U_start=0,
+            U_end=10,
+            U_step=1,
+            mu_start=0,
+            mu_end=10,
+            mu_step=1,
         )
 
 
