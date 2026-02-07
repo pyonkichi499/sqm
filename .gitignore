@@ -4,3 +4,4 @@ __pycache__
 *.mod
 !params.dat
 .sqm
+run_tests
