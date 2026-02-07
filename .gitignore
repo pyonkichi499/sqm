@@ -1,7 +1,38 @@
+# Fortran
 *.out
-*.dat
-__pycache__
 *.mod
-output/
+*.o
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data files (generated)
+*.dat
+
+# Project specific
 .sqm
 run_tests
+figures/
+output/
+
+# Claude Code
+.claude/
+
+# Node (not used)
+package-lock.json
+
+# OS
+.DS_Store
+test_functions
