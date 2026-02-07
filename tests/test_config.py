@@ -12,7 +12,6 @@ import pytest
 
 from sqm.config import Config, PathConfig, SeedConfig, SimulationConfig, SweepConfig
 
-
 # =============================================================================
 # Round 1: SimulationConfig
 # =============================================================================

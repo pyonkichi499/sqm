@@ -178,12 +178,8 @@ def detect_thermalization(
     # 定常状態からの偏差を計算
     deviations = np.abs(window_means - stationary_mean)
 
-    # 閾値を設定
-    if stationary_std < 1e-15:
-        threshold = 1e-10
-    else:
-        # 定常状態の平均から3σ以内に入っていれば定常とみなす
-        threshold = 3.0 * stationary_std
+    # 閾値を設定（定常状態の平均から3σ以内に入っていれば定常とみなす）
+    threshold = 1e-10 if stationary_std < 1e-15 else 3.0 * stationary_std
 
     # 連続するウィンドウ数（少なくとも3つ連続で閾値内なら定常と判断）
     n_consecutive = min(3, n_windows // 3)

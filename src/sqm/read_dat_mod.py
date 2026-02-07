@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -28,7 +27,7 @@ def configure_plot() -> None:
 configure_plot()
 
 
-def read_dat(filename: str | Path) -> Tuple[np.ndarray, np.ndarray]:
+def read_dat(filename: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """Fortranバイナリファイルからヘッダーとボディを読み込む。
 
     Parameters
@@ -80,8 +79,8 @@ def read_dat(filename: str | Path) -> Tuple[np.ndarray, np.ndarray]:
 
         body_dtype = np.dtype([
             head,
-            ('a', '<{}c16'.format(Nx)),
-            ('a_ast', '<{}c16'.format(Nx)),
+            ('a', f'<{Nx}c16'),
+            ('a_ast', f'<{Nx}c16'),
             tail])
         body = np.fromfile(fd, dtype=body_dtype, count=-1)
 
@@ -89,7 +88,7 @@ def read_dat(filename: str | Path) -> Tuple[np.ndarray, np.ndarray]:
     return header, body
 
 
-def jackknife(arr: npt.ArrayLike) -> Tuple[float, float]:
+def jackknife(arr: npt.ArrayLike) -> tuple[float, float]:
     """ジャックナイフ法による平均と誤差の推定 (O(n))。
 
     Parameters
@@ -116,7 +115,7 @@ def compute_correlation(
     a_list: list,
     a_ast_list: list,
     Nx: int,
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """空間相関関数 <a[0] * a*[x]> を計算する。
 
     Parameters

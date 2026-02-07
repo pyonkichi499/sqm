@@ -12,7 +12,6 @@ from typing import Any
 
 import yaml
 
-
 # =============================================================================
 # Round 1: SimulationConfig
 # =============================================================================
@@ -83,7 +82,9 @@ class SweepConfig:
             raise ValueError("U と mu を同時にスイープすることはできません")
 
         if self.U is not None and self.mu is not None and not has_mu_sweep and not has_U_sweep:
-            raise ValueError("U と mu の両方を固定することはできません。どちらかをスイープしてください")
+            raise ValueError(
+                "U と mu の両方を固定することはできません。どちらかをスイープしてください"
+            )
 
     @property
     def sweep_param(self) -> str:

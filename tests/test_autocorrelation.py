@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-
 # ============================================================
 # Round 1: autocorrelation 関数
 # ============================================================
@@ -189,7 +188,6 @@ class TestDetectThermalization:
         """前半がトレンド、後半が定常のデータ"""
         from sqm.autocorrelation import detect_thermalization
 
-        n = 1000
         # 前半200点：急激なドリフト（thermalization期間）
         trend = np.linspace(10.0, 0.0, 200)
         # 後半800点：定常状態
@@ -203,7 +201,6 @@ class TestDetectThermalization:
         """window_size が検出に影響する"""
         from sqm.autocorrelation import detect_thermalization
 
-        n = 1000
         trend = np.linspace(5.0, 0.0, 200)
         stationary = np.random.randn(800) * 0.1
         data = np.concatenate([trend, stationary])
