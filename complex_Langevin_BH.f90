@@ -1,8 +1,6 @@
 module functions_module
     implicit none
 
-    integer :: seedsize
-    integer, allocatable:: seed(:)
     logical :: is_converge
 
     integer, parameter :: Ntau = 6, Nx = 6, Ny = 6, Nz = 6, Dx = Nx*Ny*Nz
@@ -133,35 +131,6 @@ contains
         a_ast = complex(y, 0d0)
     end subroutine
 
-    subroutine do_langevin_loop()! Langevin方程式を解く部分(このプログラムでは未使用)
-        complex(kind(0d0)) :: a_next(Ntau, Dx), a_ast_next(Ntau, Dx)
-        double precision :: s, sigma
-        integer :: x, tau
-        sigma = sqrt(2d0 * ds / dtau)
-
-        s = 0d0
-        is_converge = .true.
-        do while (s < s_end)
-            s = s + ds
-            do x = 1, Dx
-                do tau = 1, Ntau
-                    a_next(tau, x) = a(tau, x) + da(a, a_ast, tau, x) * ds
-                    a_ast_next(tau, x) = a_ast(tau, x) + da_ast(a, a_ast, tau, x) * ds
-                    !a_nextが発散してたらis_convergeを更新
-                    if ( isnan(real(a_next(tau, x))) .or. isnan(imag(a_next(tau, x))) ) then
-                        is_converge = .false.
-                        return
-                    endif
-                end do
-            end do
-            call set_dw()
-            a_next = a_next + sigma * dw
-            a_ast_next = a_ast_next + sigma * conjg(dw)
-            a = a_next
-            a_ast = a_ast_next
-        end do
-    end subroutine
-
     subroutine do_langevin_loop_RK()! Langevin方程式を解く部分
         complex(kind(0d0)) :: a_mid(Ntau, Dx), a_ast_mid(Ntau, Dx), a_next(Ntau, Dx), a_ast_next(Ntau, Dx)
         double precision :: s, sigma
@@ -220,26 +189,21 @@ program complex_Langevin_BH
     use functions_module
     implicit none
     
-    ! 変数の宣言
-    integer :: i, j, Nsample, Nfailed
-    double precision :: v
-    complex(kind(0d0)) :: corrfunc(Nx)
+    integer :: i, Nsample, Nfailed
     character(len=60) :: arg
 
     namelist /sampling_setting/ Nsample
 
-    ! fix the random seed
-    call random_seed(size=seedsize)
-    allocate(seed(seedsize))
-    seed = 0
-    call random_seed(put=seed)
+    ! 乱数シードをシステムのエントロピーから初期化
+    ! (並列実行時に各プロセスが異なる乱数列を使う)
+    ! 再現性が必要な場合は call random_seed(put=...) で固定値を設定する
+    call random_seed()
 
     ! set_nn() の呼び出し
     ! idx, (x, y, z)の変換を行うための配列が定義される
     call set_nn()
 
     ! 実行時引数の読み取り
-    ! 実行時に引数が与えられなかった場合は245行目の警告を表示
     call get_command_argument(1, arg)
     if (len_trim(arg) == 0) then
         stop "parameter file is required."
@@ -255,9 +219,7 @@ program complex_Langevin_BH
 
     write(*, *) "mu, U, dtau, Ntau, ds, s_end, Nsample = ", mu, U, dtau, Ntau, ds, s_end, Nsample
 
-    v = 0
     Nfailed = 0
-    corrfunc = (0, 0)
     call write_header()
     do i = 1, Nsample
         call initialize()
