@@ -14,24 +14,32 @@ mu = np.arange(0, 20, 2)
 
 Nsample = 200
 s = "1d0"
+OUTDIR = "output"
 
 
 def run_simulation(params):
     """1つの(U, mu)に対するシミュレーション実行と解析を行う"""
     U, mu = params
 
-    datfilename = f"U={U},mu={mu},s={s}.dat"
-    paramsfile = f"params_U={U}_mu={mu}.dat"
+    datfilename = os.path.join(OUTDIR, f"U={U},mu={mu},s={s}.dat")
+    paramsfile = os.path.join(OUTDIR, f"params_U={U}_mu={mu}.dat")
 
     wparams.write_params(mu, U, Nsample, datfilename, paramsfile=paramsfile)
     run(["./a.out", paramsfile])
     os.remove(paramsfile)
 
-    corr_val = read_dat_mod.readfile(datfilename)
-    return U, mu, corr_val
+    header, body = read_dat_mod.read_dat(datfilename)
+    Nx = header[0]['Nx']
+    a_list = [b['a'] for b in body]
+    a_ast_list = [b['a_ast'] for b in body]
+    corr_mean, corr_err = read_dat_mod.compute_correlation(a_list, a_ast_list, Nx)
+    mid = Nx // 2
+    return U, mu, corr_mean[mid], corr_err[mid]
 
 
 if __name__ == "__main__":
+    os.makedirs(OUTDIR, exist_ok=True)
+
     U_is_sweep = isinstance(U, np.ndarray)
     mu_is_sweep = isinstance(mu, np.ndarray)
 
@@ -62,27 +70,30 @@ if __name__ == "__main__":
         for future in as_completed(futures):
             p = futures[future]
             try:
-                U_val, mu_val, corr_val = future.result()
-                results[(U_val, mu_val)] = corr_val
+                U_val, mu_val, mean, err = future.result()
+                results[(U_val, mu_val)] = (mean, err)
                 print(f"U={U_val}, mu={mu_val} completed")
             except Exception as e:
                 print(f"U={p[0]}, mu={p[1]} failed: {e}")
 
     # スイープ順に結果を並べる
-    corr_list = []
+    corr_mean_list = []
+    corr_err_list = []
     for v in sweep_values:
         key = (v, fixed_value) if U_is_sweep else (fixed_value, v)
-        corr_list.append(results.get(key, np.nan))
+        mean, err = results.get(key, (np.nan, 0.0))
+        corr_mean_list.append(mean)
+        corr_err_list.append(err)
 
     # プロット
     plt.close()
     plt.figure(dpi=100)
-    plt.plot(sweep_values, corr_list, "o-")
+    plt.errorbar(sweep_values, corr_mean_list, yerr=corr_err_list, fmt="o-")
     xlabel = r"$\mu$" if sweep_name == "mu" else f"${sweep_name}$"
     plt.xlabel(xlabel)
     plt.ylabel(r"$\langle a_0 a_{N/2}^* \rangle$")
     plt.title(f"{fixed_name}={fixed_value}, N={Nsample}")
 
-    figname = f"sweep_{sweep_name}_{fixed_name}={fixed_value}_N={Nsample}.png"
+    figname = os.path.join(OUTDIR, f"sweep_{sweep_name}_{fixed_name}={fixed_value}_N={Nsample}.png")
     plt.savefig(figname, bbox_inches="tight")
     print(f"Saved {figname}")
