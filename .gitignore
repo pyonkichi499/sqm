@@ -1,7 +1,32 @@
+# Fortran
 *.out
-__pycache__
-*.dat
 *.mod
-!params.dat
+*.o
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data files (generated)
+*.dat
+
+# Project specific
 .sqm
 run_tests
+figures/
+output/
+
+# OS
+.DS_Store
+test_functions
