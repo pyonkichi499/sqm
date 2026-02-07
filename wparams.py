@@ -1,6 +1,6 @@
-def write_params(mu, U, Nsample, filename,
+def write_params(mu, U, Nsample, filename, paramsfile="params.dat",
                  dtau="0.3d0", ds="0.3d-5", s_end="1d0"):
-    with open("params.dat", "w") as f:
+    with open(paramsfile, "w") as f:
         f.write(
             f"&params\n"
             f"mu = {mu}\n"
