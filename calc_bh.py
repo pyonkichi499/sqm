@@ -1,30 +1,61 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from subprocess import run
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# fortranで作ったdatファイルを読み込むのに使う(やつだったと思うけど要確認)
 import read_dat_mod
-# params.datの書き込みに使う
 import wparams
 
 U_0 = 5
 U_end = 40
-s = "1d0" # used only filename
+s = "1d0"  # used only filename
 Nsample = 200
 U_list = np.arange(U_0, U_end, 10)
-corr_a_list = []
-corr_err = []
 
-for U in U_list:
-    mu = 0.4*U
 
-    # params.datのファイル名
-    filename = f"U={U}," + f"s={s}" + ".dat"
-    wparams.write_params(mu, U, Nsample, filename)
-    run(["./a.out","params.dat"])
-    corr_a_list.append(read_dat_mod.readfile(filename)[0])
-    corr_a_list.append(read_dat_mod.readfile(filename)[1])
+def run_simulation(U):
+    """1つのU値に対するシミュレーション実行と解析を行う"""
+    mu = 0.4 * U
 
-plt.close()
-plt.error(U_list, corr_a_list, corr_err)
-plt.savefig(f"U={U_0}"+"~"+f"{U_end},"+f"N={Nsample}"+".png")
+    datfilename = f"U={U},s={s}.dat"
+    paramsfile = f"params_U={U}.dat"
+
+    # 固有のパラメータファイルを書き出し
+    wparams.write_params(mu, U, Nsample, datfilename, paramsfile=paramsfile)
+
+    # Fortranシミュレーション実行
+    run(["./a.out", paramsfile])
+
+    # 一時パラメータファイルを削除
+    os.remove(paramsfile)
+
+    # 解析
+    corr_val = read_dat_mod.readfile(datfilename)
+    return U, corr_val
+
+
+if __name__ == "__main__":
+    # 利用可能なCPU数（最大でU_listの長さまで）
+    max_workers = min(len(U_list), os.cpu_count() or 1)
+    print(f"Running {len(U_list)} simulations with {max_workers} workers")
+
+    results = {}
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(run_simulation, U): U for U in U_list}
+        for future in as_completed(futures):
+            U = futures[future]
+            try:
+                U_val, corr_val = future.result()
+                results[U_val] = corr_val
+                print(f"U={U_val} completed")
+            except Exception as e:
+                print(f"U={U} failed: {e}")
+
+    # U順にソートして結果をまとめる
+    sorted_Us = sorted(results.keys())
+    corr_a_list = [results[U] for U in sorted_Us]
+
+    plt.close()
+    plt.errorbar(sorted_Us, corr_a_list)
+    plt.savefig(f"U={U_0}~{U_end},N={Nsample}.png")
