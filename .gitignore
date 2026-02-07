@@ -1,7 +1,7 @@
 *.out
-__pycache__
 *.dat
+__pycache__
 *.mod
-!params.dat
+output/
 .sqm
 run_tests

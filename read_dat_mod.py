@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -64,7 +65,7 @@ def plot_correlation(xarr, corr_mean, corr_err, mu, U, Ntau, N, savepath):
     plt.savefig(savepath, bbox_inches="tight", pad_inches=0.0)
 
 
-def readfile(filename):
+def readfile(filename, outdir="output"):
     """データ読み込み・相関計算・プロット保存を行い、格子中央の相関値を返す"""
     header, body = read_dat(filename)
 
@@ -82,7 +83,7 @@ def readfile(filename):
     print("num. of samples: {}".format(N))
 
     xarr = np.arange(Nx, dtype=np.float64)
-    savepath = "../figures/" + f"mu={mu:.1f},U={U:.1f},tau={Ntau:.0f},N={N}.png"
+    savepath = os.path.join(outdir, f"mu={mu:.1f},U={U:.1f},tau={Ntau:.0f},N={N}.png")
     plot_correlation(xarr, corr_mean, corr_err, mu, U, Ntau, N, savepath)
 
     return corr_mean[Nx // 2]
