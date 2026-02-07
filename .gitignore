@@ -27,6 +27,12 @@ run_tests
 figures/
 output/
 
+# Claude Code
+.claude/
+
+# Node (not used)
+package-lock.json
+
 # OS
 .DS_Store
 test_functions
