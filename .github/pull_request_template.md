@@ -1,29 +1,29 @@
-## Summary
+## 概要
 <!-- 変更の概要を1-3行で記述 -->
 
 
-## Changes
+## 変更内容
 <!-- 主な変更点を箇条書きで -->
 -
 
-## Motivation
+## 変更理由
 <!-- なぜこの変更が必要か -->
 
 
-## Test plan
+## テスト計画
 <!-- テスト方法・確認項目 -->
-- [ ] `make test-fortran` - Fortran tests passed
-- [ ] `rye run pytest tests/ -v` - Python tests passed
-- [ ] `rye run ruff check .` - Lint passed
-- [ ] `rye run mypy src/sqm/` - Type check passed
+- [ ] `make test-fortran` - Fortran テスト通過
+- [ ] `rye run pytest tests/ -v` - Python テスト通過
+- [ ] `rye run ruff check .` - Lint 通過
+- [ ] `rye run mypy src/sqm/` - 型チェック通過
 
-## Affected areas
+## 影響範囲
 <!-- 該当する領域にチェック -->
-- [ ] Fortran (simulation kernel)
-- [ ] Python (orchestration / analysis)
-- [ ] CI / build
-- [ ] Documentation
+- [ ] Fortran（シミュレーションカーネル）
+- [ ] Python（オーケストレーション / 解析）
+- [ ] CI / ビルド
+- [ ] ドキュメント
 
-## Notes
+## 備考
 <!-- レビュアーへの補足事項があれば -->
 
