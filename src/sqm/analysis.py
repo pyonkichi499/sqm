@@ -1,21 +1,85 @@
-"""自己相関解析モジュール
+"""統計解析モジュール
 
-Monte Carlo / Langevin シミュレーションデータの自己相関を解析し、
-正しい統計的誤差推定を行うためのツールを提供する。
-
-主な機能:
-- autocorrelation: 自己相関関数の計算
-- integrated_autocorr_time: 積分自己相関時間の計算
-- effective_sample_size: 有効サンプル数の計算
-- detect_thermalization: thermalization 期間の検出
-- thin_data: データの間引き
-- corrected_error: 自己相関を考慮した補正済み誤差推定
+ジャックナイフ法、相関関数、自己相関解析などの統計ツールを提供する。
 """
 
 from __future__ import annotations
 
 import numpy as np
 import numpy.typing as npt
+
+# ============================================================
+# ジャックナイフ法
+# ============================================================
+
+
+def jackknife(arr: npt.ArrayLike) -> tuple[float, float]:
+    """ジャックナイフ法による平均と誤差の推定 (O(n))。
+
+    Parameters
+    ----------
+    arr : npt.ArrayLike
+        サンプル配列（複素数の場合は実部のみ使用）
+
+    Returns
+    -------
+    Tuple[float, float]
+        (平均値, 誤差) のタプル
+    """
+    arr = np.real(np.asarray(arr))
+    n: int = len(arr)
+    total: float = float(np.sum(arr))
+    jk_mean: npt.NDArray[np.float64] = (total - arr) / (n - 1)
+    jk_mm: float = total / n
+    var: float = float(np.sum((jk_mean - jk_mm) ** 2)) / n
+    err: float = float(np.sqrt((n - 1) * var))
+    return jk_mm, err
+
+
+# ============================================================
+# 空間相関関数
+# ============================================================
+
+
+def compute_correlation(
+    a_list: list,
+    a_ast_list: list,
+    Nx: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """空間相関関数 <a[0] * a*[x]> を計算する。
+
+    Parameters
+    ----------
+    a_list : list
+        各サンプルの a 配列のリスト
+    a_ast_list : list
+        各サンプルの a* 配列のリスト
+    Nx : int
+        格子サイズ
+
+    Returns
+    -------
+    Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
+        (相関関数平均, 相関関数誤差) のタプル
+    """
+    a_matrix = np.asarray(a_list)  # shape: (N, Nx)
+    a_ast_matrix = np.asarray(a_ast_list)  # shape: (N, Nx)
+
+    # vectorized: corr_all[i, x] = Re(a[i, 0] * a_ast[i, x])
+    corr_all = np.real(a_matrix[:, 0:1] * a_ast_matrix)  # shape: (N, Nx)
+
+    corr_mean: npt.NDArray[np.float64] = np.zeros(Nx, dtype=np.float64)
+    corr_err: npt.NDArray[np.float64] = np.zeros(Nx, dtype=np.float64)
+
+    for x in range(Nx):
+        corr_mean[x], corr_err[x] = jackknife(corr_all[:, x])
+
+    return corr_mean, corr_err
+
+
+# ============================================================
+# 自己相関解析
+# ============================================================
 
 
 def autocorrelation(

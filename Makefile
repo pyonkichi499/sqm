@@ -50,3 +50,5 @@ ci: test lint format-check type-check
 clean:
 	rm -f a.out a_debug.out test_functions *.o *.mod
 	rm -rf __pycache__ .pytest_cache .mypy_cache .ruff_cache
+	rm -f *.dat experiment_*.json
+	rm -rf output/ figures/

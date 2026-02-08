@@ -1,6 +1,9 @@
-"""自己相関解析モジュールのテスト
+"""analysis.py のテスト
 
-TDD の Red-Green-Refactor サイクルに従い、各ラウンドごとにテストを記述。
+統計解析モジュール (analysis.py) の全関数に対するテスト。
+read_dat_mod.py の jackknife / compute_correlation と
+autocorrelation.py の全関数を統合した analysis.py をテストする。
+
 conftest.py により np.random.seed(42) が全テストで自動適用される。
 """
 
@@ -10,8 +13,126 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sqm.analysis import (
+    autocorrelation,
+    compute_correlation,
+    corrected_error,
+    detect_thermalization,
+    effective_sample_size,
+    integrated_autocorr_time,
+    jackknife,
+    thin_data,
+)
+
 # ============================================================
-# Round 1: autocorrelation 関数
+# 1. jackknife() のテスト
+# ============================================================
+
+
+class TestJackknife:
+    """ジャックナイフ法のテスト群"""
+
+    def test_ジャックナイフ法_既知の配列で正しい平均を返す(self) -> None:
+        arr = [1.0, 2.0, 3.0, 4.0, 5.0]
+        mean, _ = jackknife(arr)
+        assert mean == pytest.approx(3.0)
+
+    def test_ジャックナイフ法_既知の配列で正しい誤差を返す(self) -> None:
+        arr = [1.0, 2.0, 3.0, 4.0, 5.0]
+        _, err = jackknife(arr)
+        # ジャックナイフ誤差を手動で計算して検証
+        n = len(arr)
+        total = sum(arr)
+        jk_means = [(total - x) / (n - 1) for x in arr]
+        jk_mm = total / n
+        var = sum((jk - jk_mm) ** 2 for jk in jk_means) / n
+        expected_err = np.sqrt((n - 1) * var)
+        assert err == pytest.approx(expected_err)
+
+    def test_ジャックナイフ法_複素数配列は実部のみ処理する(self) -> None:
+        arr = [1.0 + 2.0j, 3.0 + 4.0j, 5.0 + 6.0j]
+        mean, err = jackknife(arr)
+        # 実部は [1.0, 3.0, 5.0] なので平均は 3.0
+        assert mean == pytest.approx(3.0)
+        # 戻り値が float であること
+        assert isinstance(float(mean), float)
+
+    def test_ジャックナイフ法_全て同じ値なら誤差ゼロ(self) -> None:
+        arr = [7.0, 7.0, 7.0, 7.0]
+        mean, err = jackknife(arr)
+        assert mean == pytest.approx(7.0)
+        assert err == pytest.approx(0.0)
+
+    def test_ジャックナイフ法_2要素配列で正しく動作する(self) -> None:
+        arr = [10.0, 20.0]
+        mean, err = jackknife(arr)
+        assert mean == pytest.approx(15.0)
+        # 2要素のジャックナイフ誤差を手計算
+        # jk_means = [20.0, 10.0], jk_mm = 15.0
+        # var = ((20-15)^2 + (10-15)^2) / 2 = 25
+        # err = sqrt(1 * 25) = 5.0
+        assert err == pytest.approx(5.0)
+
+
+# ============================================================
+# 2. compute_correlation() のテスト
+# ============================================================
+
+
+class TestComputeCorrelation:
+    """compute_correlation() のテスト群"""
+
+    def test_compute_correlation_既知の相関を正しく計算する(self) -> None:
+        # 2 サンプル、格子サイズ 3
+        Nx = 3
+        a_list = [
+            np.array([1.0 + 0j, 2.0 + 0j, 3.0 + 0j]),
+            np.array([2.0 + 0j, 3.0 + 0j, 4.0 + 0j]),
+        ]
+        a_ast_list = [
+            np.array([1.0 + 0j, 2.0 + 0j, 3.0 + 0j]),
+            np.array([2.0 + 0j, 3.0 + 0j, 4.0 + 0j]),
+        ]
+        corr_mean, corr_err = compute_correlation(a_list, a_ast_list, Nx)
+
+        # corr[x] = <a[0] * a_ast[x]>
+        # x=0: [1*1, 2*2] = [1, 4] -> mean=2.5
+        # x=1: [1*2, 2*3] = [2, 6] -> mean=4.0
+        # x=2: [1*3, 2*4] = [3, 8] -> mean=5.5
+        assert corr_mean[0] == pytest.approx(2.5)
+        assert corr_mean[1] == pytest.approx(4.0)
+        assert corr_mean[2] == pytest.approx(5.5)
+
+    def test_compute_correlation_全て同じ値なら誤差ゼロ(self) -> None:
+        Nx = 2
+        a_list = [
+            np.array([1.0 + 0j, 2.0 + 0j]),
+            np.array([1.0 + 0j, 2.0 + 0j]),
+            np.array([1.0 + 0j, 2.0 + 0j]),
+        ]
+        a_ast_list = [
+            np.array([1.0 + 0j, 2.0 + 0j]),
+            np.array([1.0 + 0j, 2.0 + 0j]),
+            np.array([1.0 + 0j, 2.0 + 0j]),
+        ]
+        _, corr_err = compute_correlation(a_list, a_ast_list, Nx)
+        assert corr_err[0] == pytest.approx(0.0)
+        assert corr_err[1] == pytest.approx(0.0)
+
+    def test_compute_correlation_配列サイズが正しい(self) -> None:
+        Nx = 5
+        a_list = [np.ones(Nx, dtype=complex) for _ in range(4)]
+        a_ast_list = [np.ones(Nx, dtype=complex) for _ in range(4)]
+        corr_mean, corr_err = compute_correlation(a_list, a_ast_list, Nx)
+
+        assert len(corr_mean) == Nx
+        assert len(corr_err) == Nx
+        assert corr_mean.dtype == np.float64
+        assert corr_err.dtype == np.float64
+
+
+# ============================================================
+# 3. autocorrelation() のテスト
 # ============================================================
 
 
@@ -20,16 +141,12 @@ class TestAutocorrelation:
 
     def test_自己相関関数_ラグ0は常に1(self) -> None:
         """正規化により先頭は常に1.0"""
-        from sqm.autocorrelation import autocorrelation
-
         data = np.random.randn(1000)
         result = autocorrelation(data)
         assert result[0] == pytest.approx(1.0)
 
     def test_自己相関関数_完全に相関したデータで1を返す(self) -> None:
         """同一の定数値列では自己相関が全ラグで1"""
-        from sqm.autocorrelation import autocorrelation
-
         data = np.ones(100)
         result = autocorrelation(data)
         # 定数列の自己相関は全て1（分散が0なので特殊ケース）
@@ -37,8 +154,6 @@ class TestAutocorrelation:
 
     def test_自己相関関数_ホワイトノイズでラグ1以降ほぼゼロ(self) -> None:
         """ランダムデータではラグ0以降は約0"""
-        from sqm.autocorrelation import autocorrelation
-
         data = np.random.randn(10000)
         result = autocorrelation(data)
         # ラグ0は1.0
@@ -48,8 +163,6 @@ class TestAutocorrelation:
 
     def test_自己相関関数_既知の周期信号で正しいパターン(self) -> None:
         """sin波のような周期データで周期的な自己相関"""
-        from sqm.autocorrelation import autocorrelation
-
         period = 50
         t = np.arange(1000)
         data = np.sin(2 * np.pi * t / period)
@@ -61,8 +174,6 @@ class TestAutocorrelation:
 
     def test_自己相関関数_max_lagで出力長が制限される(self) -> None:
         """max_lag を指定すると出力の長さがmax_lag+1になる"""
-        from sqm.autocorrelation import autocorrelation
-
         data = np.random.randn(1000)
         max_lag = 50
         result = autocorrelation(data, max_lag=max_lag)
@@ -70,15 +181,13 @@ class TestAutocorrelation:
 
     def test_自己相関関数_max_lag未指定でデータ長と同じ(self) -> None:
         """max_lag を指定しない場合、出力の長さはデータ長"""
-        from sqm.autocorrelation import autocorrelation
-
         data = np.random.randn(200)
         result = autocorrelation(data)
         assert len(result) == len(data)
 
 
 # ============================================================
-# Round 2: integrated_autocorr_time 関数
+# 4. integrated_autocorr_time() のテスト
 # ============================================================
 
 
@@ -87,8 +196,6 @@ class TestIntegratedAutocorrTime:
 
     def test_積分自己相関時間_ホワイトノイズでは約0_5(self) -> None:
         """独立データの τ_int は 0.5 に近い"""
-        from sqm.autocorrelation import integrated_autocorr_time
-
         data = np.random.randn(100000)
         tau = integrated_autocorr_time(data)
         # 独立データの τ_int ≈ 0.5（自己相関関数の和が 0.5 に収束）
@@ -96,8 +203,6 @@ class TestIntegratedAutocorrTime:
 
     def test_積分自己相関時間_相関データでは大きい値(self) -> None:
         """相関のあるデータでは τ_int > 1"""
-        from sqm.autocorrelation import integrated_autocorr_time
-
         # AR(1) プロセスで相関のあるデータを生成
         n = 50000
         phi = 0.95
@@ -114,8 +219,6 @@ class TestIntegratedAutocorrTime:
 
     def test_積分自己相関時間_定数列では0_5(self) -> None:
         """定数列（分散0）でも適切に処理される"""
-        from sqm.autocorrelation import integrated_autocorr_time
-
         data = np.ones(100)
         tau = integrated_autocorr_time(data)
         # 定数列 → 自己相関は全て1 → τ_int は大きな値になる
@@ -124,7 +227,7 @@ class TestIntegratedAutocorrTime:
 
 
 # ============================================================
-# Round 3: effective_sample_size 関数
+# 5. effective_sample_size() のテスト
 # ============================================================
 
 
@@ -133,8 +236,6 @@ class TestEffectiveSampleSize:
 
     def test_有効サンプル数_独立データではN個に近い(self) -> None:
         """独立データの有効サンプル数 ≈ N"""
-        from sqm.autocorrelation import effective_sample_size
-
         data = np.random.randn(10000)
         n_eff = effective_sample_size(data)
         # 独立データでは N_eff ≈ N
@@ -142,8 +243,6 @@ class TestEffectiveSampleSize:
 
     def test_有効サンプル数_相関データではN未満(self) -> None:
         """相関データの有効サンプル数 < N"""
-        from sqm.autocorrelation import effective_sample_size
-
         # AR(1) プロセスで相関のあるデータを生成
         n = 50000
         phi = 0.95
@@ -160,15 +259,13 @@ class TestEffectiveSampleSize:
 
     def test_有効サンプル数_常に正の値(self) -> None:
         """有効サンプル数は常に正"""
-        from sqm.autocorrelation import effective_sample_size
-
         data = np.random.randn(100)
         n_eff = effective_sample_size(data)
         assert n_eff > 0
 
 
 # ============================================================
-# Round 4: detect_thermalization 関数
+# 6. detect_thermalization() のテスト
 # ============================================================
 
 
@@ -177,18 +274,16 @@ class TestDetectThermalization:
 
     def test_thermalization検出_定常データではスキップなし(self) -> None:
         """定常データのthermalization期間は0または非常に小さい"""
-        from sqm.autocorrelation import detect_thermalization
-
         # 完全にランダムな定常データ
         data = np.random.randn(1000)
         skip = detect_thermalization(data)
         # 定常データではスキップ不要（ウィンドウ幅程度は許容）
         assert skip < len(data) * 0.1
 
-    def test_thermalization検出_トレンドありデータで正しくスキップ(self) -> None:
+    def test_thermalization検出_トレンドありデータで正しくスキップ(
+        self,
+    ) -> None:
         """前半がトレンド、後半が定常のデータ"""
-        from sqm.autocorrelation import detect_thermalization
-
         # 前半200点：急激なドリフト（thermalization期間）
         trend = np.linspace(10.0, 0.0, 200)
         # 後半800点：定常状態
@@ -200,8 +295,6 @@ class TestDetectThermalization:
 
     def test_thermalization検出_window_sizeの影響(self) -> None:
         """window_size が検出に影響する"""
-        from sqm.autocorrelation import detect_thermalization
-
         trend = np.linspace(5.0, 0.0, 200)
         stationary = np.random.randn(800) * 0.1
         data = np.concatenate([trend, stationary])
@@ -213,7 +306,7 @@ class TestDetectThermalization:
 
 
 # ============================================================
-# Round 5: thin_data 関数
+# 7. thin_data() のテスト
 # ============================================================
 
 
@@ -222,8 +315,6 @@ class TestThinData:
 
     def test_thinning_相関データを間引く(self) -> None:
         """自己相関時間に基づいてデータを間引く"""
-        from sqm.autocorrelation import thin_data
-
         # AR(1) プロセスで相関のあるデータを生成
         n = 10000
         phi = 0.9
@@ -239,8 +330,6 @@ class TestThinData:
 
     def test_thinning_結果のデータは独立に近い(self) -> None:
         """間引き後の自己相関時間は約0.5に近づく"""
-        from sqm.autocorrelation import autocorrelation, thin_data
-
         # AR(1) プロセスで強い相関のあるデータを生成
         n = 50000
         phi = 0.9
@@ -255,8 +344,6 @@ class TestThinData:
 
     def test_thinning_明示的なインターバル指定(self) -> None:
         """thin_interval を明示的に指定して間引く"""
-        from sqm.autocorrelation import thin_data
-
         data = np.arange(100, dtype=np.float64)
         thinned = thin_data(data, thin_interval=5)
         # 5刻みで間引き → 20個
@@ -265,15 +352,13 @@ class TestThinData:
 
     def test_thinning_インターバル1では全データ返す(self) -> None:
         """thin_interval=1 では全データがそのまま返る"""
-        from sqm.autocorrelation import thin_data
-
         data = np.random.randn(100)
         thinned = thin_data(data, thin_interval=1)
         np.testing.assert_array_equal(thinned, data)
 
 
 # ============================================================
-# Round 6: corrected_error 関数
+# 8. corrected_error() のテスト
 # ============================================================
 
 
@@ -282,8 +367,6 @@ class TestCorrectedError:
 
     def test_補正誤差_独立データではナイーブ誤差と同程度(self) -> None:
         """独立データでは補正誤差 ≈ ナイーブ標準誤差"""
-        from sqm.autocorrelation import corrected_error
-
         data = np.random.randn(10000)
         mean, error = corrected_error(data)
         # 平均値の確認
@@ -295,8 +378,6 @@ class TestCorrectedError:
 
     def test_補正誤差_相関データではナイーブ誤差より大きい(self) -> None:
         """相関データでは補正誤差 > ナイーブ標準誤差"""
-        from sqm.autocorrelation import corrected_error
-
         # AR(1) プロセスで相関のあるデータを生成
         n = 50000
         phi = 0.95
@@ -312,8 +393,6 @@ class TestCorrectedError:
 
     def test_補正誤差_返り値の型(self) -> None:
         """返り値は (float, float) のタプル"""
-        from sqm.autocorrelation import corrected_error
-
         data = np.random.randn(1000)
         result = corrected_error(data)
         assert isinstance(result, tuple)
@@ -324,8 +403,6 @@ class TestCorrectedError:
 
     def test_補正誤差_誤差は常に正(self) -> None:
         """誤差は常に正の値"""
-        from sqm.autocorrelation import corrected_error
-
         data = np.random.randn(1000)
         _, error = corrected_error(data)
         assert error > 0

@@ -37,15 +37,15 @@ class SimulationConfig:
 class PathConfig:
     """ファイルパス設定"""
 
-    output_dir: Path = field(default_factory=lambda: Path("."))
-    figures_dir: Path = field(default_factory=lambda: Path("./figures"))
+    output_dir: Path = field(default_factory=lambda: Path("./output"))
+    figures_dir: Path = field(default_factory=lambda: Path("./output/figures"))
     fortran_binary: Path = field(default_factory=lambda: Path("./a.out"))
 
     def __post_init__(self) -> None:
-        # 文字列が渡された場合に Path へ変換する
-        self.output_dir = Path(self.output_dir)
-        self.figures_dir = Path(self.figures_dir)
-        self.fortran_binary = Path(self.fortran_binary)
+        # 文字列が渡された場合に Path へ変換し、絶対パスに解決する
+        self.output_dir = Path(self.output_dir).resolve()
+        self.figures_dir = Path(self.figures_dir).resolve()
+        self.fortran_binary = Path(self.fortran_binary).resolve()
 
 
 # =============================================================================
@@ -96,11 +96,18 @@ class SweepConfig:
         return "U"
 
     def sweep_values(self) -> list[float]:
-        """スイープ値のリストを返す"""
+        """スイープ値のリストを返す
+
+        Raises
+        ------
+        ValueError
+            スイープパラメータが未設定、またはステップが 0 以下の場合
+        """
         if self.sweep_param == "mu":
-            assert self.mu_start is not None
-            assert self.mu_end is not None
-            assert self.mu_step is not None
+            if self.mu_start is None or self.mu_end is None or self.mu_step is None:
+                raise ValueError("mu スイープのパラメータが不足しています")
+            if self.mu_step <= 0:
+                raise ValueError(f"mu_step は正の値が必要です: {self.mu_step}")
             values: list[float] = []
             current = self.mu_start
             while current < self.mu_end:
@@ -108,9 +115,10 @@ class SweepConfig:
                 current = round(current + self.mu_step, 10)
             return values
         else:
-            assert self.U_start is not None
-            assert self.U_end is not None
-            assert self.U_step is not None
+            if self.U_start is None or self.U_end is None or self.U_step is None:
+                raise ValueError("U スイープのパラメータが不足しています")
+            if self.U_step <= 0:
+                raise ValueError(f"U_step は正の値が必要です: {self.U_step}")
             values = []
             current = self.U_start
             while current < self.U_end:
@@ -151,7 +159,8 @@ class SeedConfig:
         if self.mode == "fixed":
             return self.base_seed
         if self.mode == "hybrid":
-            assert self.base_seed is not None
+            if self.base_seed is None:
+                raise ValueError("hybrid モードでは base_seed が必要です")
             return self.base_seed + process_id
         raise ValueError(f"未知のモード: {self.mode}")
 

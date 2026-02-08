@@ -6,7 +6,7 @@ program complex_Langevin_BH
     integer :: i, Nsample, Nfailed
     integer :: ios
     character(len=256) :: iomsg_buf
-    character(len=60) :: arg
+    character(len=256) :: arg
 
     namelist /sampling_setting/ Nsample
 
@@ -68,6 +68,7 @@ program complex_Langevin_BH
     do i = 1, Nsample
         call initialize()
         write(*, *) "sample: ", i, " / ", Nsample, Nfailed
+        flush(6)
         call do_langevin_loop_RK()
         if (is_converge) then
             call write_body(20)

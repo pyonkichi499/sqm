@@ -42,16 +42,16 @@ def test_SimulationConfig_カスタム値を設定できる():
 def test_PathConfig_デフォルトパスが正しい():
     """デフォルトのパス設定が正しい"""
     cfg = PathConfig()
-    assert cfg.output_dir == Path(".")
-    assert cfg.figures_dir == Path("./figures")
-    assert cfg.fortran_binary == Path("./a.out")
+    assert cfg.output_dir == Path("./output").resolve()
+    assert cfg.figures_dir == Path("./output/figures").resolve()
+    assert cfg.fortran_binary == Path("./a.out").resolve()
 
 
 def test_PathConfig_文字列からPathに変換される():
     """文字列で指定してもPath型に変換される"""
     cfg = PathConfig(output_dir="./output")
     assert isinstance(cfg.output_dir, Path)
-    assert cfg.output_dir == Path("./output")
+    assert cfg.output_dir == Path("./output").resolve()
 
 
 # =============================================================================
@@ -95,6 +95,27 @@ def test_SweepConfig_両方スイープでValueError():
             mu_end=10,
             mu_step=1,
         )
+
+
+def test_SweepConfig_mu_stepがゼロでValueError():
+    """mu_step=0 で無限ループにならずValueErrorを送出する"""
+    cfg = SweepConfig(U=20.0, mu_start=0.0, mu_end=10.0, mu_step=0.0)
+    with pytest.raises(ValueError, match="正の値"):
+        cfg.sweep_values()
+
+
+def test_SweepConfig_U_stepがゼロでValueError():
+    """U_step=0 で無限ループにならずValueErrorを送出する"""
+    cfg = SweepConfig(mu=10.0, U_start=0.0, U_end=10.0, U_step=0.0)
+    with pytest.raises(ValueError, match="正の値"):
+        cfg.sweep_values()
+
+
+def test_SweepConfig_負のstepでValueError():
+    """負のステップ値でもValueErrorを送出する"""
+    cfg = SweepConfig(U=20.0, mu_start=0.0, mu_end=10.0, mu_step=-1.0)
+    with pytest.raises(ValueError, match="正の値"):
+        cfg.sweep_values()
 
 
 # =============================================================================
@@ -172,7 +193,7 @@ sweep:
     cfg = Config.from_yaml(config_file)
     assert cfg.simulation.dtau == "0.1d0"
     assert cfg.simulation.Nsample == 500
-    assert cfg.paths.output_dir == Path("./output")
+    assert cfg.paths.output_dir == Path("./output").resolve()
     assert cfg.sweep is not None
     assert cfg.sweep.sweep_param == "mu"
 
