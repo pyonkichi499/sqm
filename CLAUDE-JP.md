@@ -14,12 +14,12 @@
 ### データフロー
 
 ```
-CLI (cli.py) / calc_bh.py
-  -> wparams.py          (Fortran NAMELIST形式でparams.datを書き出し)
+CLI (cli.py) / runner.py
+  -> fortran_io.py       (Fortran NAMELIST形式でparams.datを書き出し)
   -> ./a.out params.dat  (Fortranシミュレーション実行、*.datバイナリを出力)
-  -> read_dat_mod.py     (Fortranの非整形バイナリを読み込み、相関関数を計算)
-  -> autocorrelation.py  (統計解析: thermalization検出、有効サンプル数)
-  -> matplotlib plot     (figures/*.pngとして保存)
+  -> fortran_io.py       (Fortranの非整形バイナリを読み込み)
+  -> analysis.py         (Jackknife、自己相関、thermalization検出、補正済み誤差推定)
+  -> plotting.py         (figures/*.pngとして保存)
 ```
 
 ### Fortranバイナリ形式
@@ -75,13 +75,13 @@ rye run pytest tests/ -v --cov=src/sqm  # カバレッジ付きで実行
 ## 主要ファイル
 
 ### Python (src/sqm/)
+- `analysis.py` - 統計解析ツール: Jackknife解析、FFTベースの自己相関、積分自己相関時間（Sokalウィンドウ法）、有効サンプル数、thermalization検出（Geweke診断着想）、データ間引き、補正済み誤差推定、相関関数計算
 - `cli.py` - Click CLIエントリポイント。`sweep` と `config` のコマンドグループを持つ
 - `config.py` - ネストされたdataclassによる設定管理（`Config`, `SimulationConfig`, `PathConfig`, `SweepConfig`, `SeedConfig`）。YAML/JSONシリアライゼーション対応
-- `read_dat_mod.py` - FortranバイナリI/O（`read_dat`）、Jackknife解析（`jackknife`）、相関関数計算（`compute_correlation`）、プロット（`plot_correlation`）、レガシーラッパー（`readfile`）
-- `autocorrelation.py` - 統計解析ツール: FFTベースの自己相関、積分自己相関時間（Sokalウィンドウ法）、有効サンプル数、thermalization検出（Geweke診断着想）、データ間引き、補正済み誤差推定
-- `calc_bh.py` - `ProcessPoolExecutor` による並列パラメータスイープのオーケストレーション
-- `wparams.py` - Fortran NAMELISTパラメータファイルの生成（`&params` と `&sampling_setting`）
 - `experiment_log.py` - 構造化された実験ログ。Git情報取得、環境メタデータ、JSON永続化、警告生成機能
+- `fortran_io.py` - FortranバイナリI/O（`read_dat`）、Fortran NAMELISTパラメータファイルの生成（`&params` と `&sampling_setting`）、レガシーラッパー（`readfile`）
+- `plotting.py` - 可視化: 相関関数プロット（`plot_correlation`）、スイープサマリープロット
+- `runner.py` - `ProcessPoolExecutor` による並列パラメータスイープのオーケストレーション
 
 ### Fortran (fortran/)
 - `functions_module.f90` - コア物理モジュール:
@@ -102,5 +102,5 @@ rye run pytest tests/ -v --cov=src/sqm  # カバレッジ付きで実行
 
 - Fortranは非整形（バイナリ）I/Oを使用し、レコードマーカーが付く。Python側の読み込みでは、gfortranが各レコードの前後に書き込む4バイトのレコード長マーカーを考慮する必要がある。
 - シミュレーションパラメータ `dtau`, `ds`, `s_end` はFortranの倍精度リテラル文字列（例: `"0.3d0"`, `"0.3d-5"`）として渡される。これはFortranが読み込むNAMELISTファイルに直接書き込まれるため。
-- `calc_bh.py` の `ProcessPoolExecutor` による並列実行では、各ワーカープロセスが独立した乱数シードを取得する（`call random_seed()` によるシステムエントロピー使用）。
+- `runner.py` の `ProcessPoolExecutor` による並列実行では、各ワーカープロセスが独立した乱数シードを取得する（`call random_seed()` によるシステムエントロピー使用）。
 - `SeedConfig` は3つのモードをサポート: `"system"`（OSエントロピー）、`"fixed"`（決定論的）、`"hybrid"`（base_seed + process_id）。

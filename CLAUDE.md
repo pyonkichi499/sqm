@@ -14,12 +14,12 @@ The simulation computes spatial correlation functions $\langle a_0 a_i^* \rangle
 ### Data Flow
 
 ```
-CLI (cli.py) / calc_bh.py
-  -> wparams.py          (writes params.dat in Fortran NAMELIST format)
+CLI (cli.py) / runner.py
+  -> fortran_io.py       (writes params.dat in Fortran NAMELIST format)
   -> ./a.out params.dat  (runs Fortran simulation, produces *.dat binary)
-  -> read_dat_mod.py     (reads Fortran unformatted binary, computes correlations)
-  -> autocorrelation.py  (statistical analysis: thermalization, effective samples)
-  -> matplotlib plot     (saves figures/*.png)
+  -> fortran_io.py       (reads Fortran unformatted binary)
+  -> analysis.py         (Jackknife, autocorrelation, thermalization, corrected error)
+  -> plotting.py         (saves figures/*.png)
 ```
 
 ### Fortran Binary Format
@@ -75,13 +75,13 @@ rye run pytest tests/ -v --cov=src/sqm  # Run with coverage
 ## Key Files
 
 ### Python (src/sqm/)
+- `analysis.py` - Statistical analysis tools: Jackknife analysis, FFT-based autocorrelation, integrated autocorrelation time (Sokal window), effective sample size, thermalization detection (Geweke-inspired), data thinning, corrected error estimation, correlation computation
 - `cli.py` - Click CLI entry point with `sweep` and `config` command groups
 - `config.py` - Configuration management with nested dataclasses (`Config`, `SimulationConfig`, `PathConfig`, `SweepConfig`, `SeedConfig`) and YAML/JSON serialization
-- `read_dat_mod.py` - Fortran binary I/O (`read_dat`), Jackknife analysis (`jackknife`), correlation computation (`compute_correlation`), plotting (`plot_correlation`), and legacy wrapper (`readfile`)
-- `autocorrelation.py` - Statistical analysis tools: FFT-based autocorrelation, integrated autocorrelation time (Sokal window), effective sample size, thermalization detection (Geweke-inspired), data thinning, corrected error estimation
-- `calc_bh.py` - Simulation orchestration with `ProcessPoolExecutor` for parallel parameter sweeps
-- `wparams.py` - Generates Fortran NAMELIST parameter files (`&params` and `&sampling_setting`)
 - `experiment_log.py` - Structured experiment logging with Git info capture, environment metadata, JSON persistence, and warning generation
+- `fortran_io.py` - Fortran binary I/O (`read_dat`), Fortran NAMELIST parameter file generation (`&params` and `&sampling_setting`), and legacy wrapper (`readfile`)
+- `plotting.py` - Visualization: correlation plots (`plot_correlation`), sweep summary plots
+- `runner.py` - Simulation orchestration with `ProcessPoolExecutor` for parallel parameter sweeps
 
 ### Fortran (fortran/)
 - `functions_module.f90` - Core physics module:
@@ -102,5 +102,5 @@ rye run pytest tests/ -v --cov=src/sqm  # Run with coverage
 
 - Fortran uses unformatted (binary) I/O with record markers. The Python reader must account for the 4-byte record length markers that gfortran writes before and after each record.
 - The simulation parameters `dtau`, `ds`, `s_end` are passed as Fortran double-precision literal strings (e.g., `"0.3d0"`, `"0.3d-5"`) because they are written directly into NAMELIST files read by Fortran.
-- Parallel execution via `ProcessPoolExecutor` in `calc_bh.py` means each worker process gets independent random seeds (system entropy via `call random_seed()`).
+- Parallel execution via `ProcessPoolExecutor` in `runner.py` means each worker process gets independent random seeds (system entropy via `call random_seed()`).
 - The `SeedConfig` supports three modes: `"system"` (OS entropy), `"fixed"` (deterministic), and `"hybrid"` (base_seed + process_id).
