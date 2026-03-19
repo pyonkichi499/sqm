@@ -1,4 +1,4 @@
-# ---- Stage 1: test ----
+# ---- Stage 1: build & test ----
 FROM python:3.12-slim AS test
 
 RUN apt-get update && \
@@ -7,31 +7,49 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir numpy matplotlib seaborn click pytest
+# Install Python dependencies (production + dev) using lock file
+COPY pyproject.toml requirements-dev.lock ./
+RUN sed '/-e file:\./d' requirements-dev.lock > /tmp/requirements-dev.txt && \
+    pip install --no-cache-dir -r /tmp/requirements-dev.txt && \
+    rm /tmp/requirements-dev.txt
 
-COPY functions_module.f90 complex_Langevin_BH.f90 Makefile ./
-RUN make build
+# Compile Fortran sources
+COPY fortran/ fortran/
+COPY Makefile ./
+RUN make all && make test_functions
 
-COPY wparams.py read_dat_mod.py simulate.py sweep.py collect.py ./
+# Install the sqm package in editable mode
+COPY src/ src/
+RUN pip install --no-cache-dir -e .
+
+# Copy tests
 COPY tests/ tests/
 
-RUN python -m pytest tests/ -v
+# Run all tests (Fortran unit tests + Python pytest)
+RUN make test-fortran && python -m pytest tests/ -v
 
 # ---- Stage 2: production ----
 FROM python:3.12-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gfortran make && \
+    apt-get install -y --no-install-recommends gfortran && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir numpy matplotlib seaborn click
+# Install production-only dependencies using lock file
+COPY pyproject.toml requirements.lock ./
+RUN sed '/-e file:\./d' requirements.lock > /tmp/requirements.txt && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
 
+# Copy compiled Fortran binary from test stage
 COPY --from=test /app/a.out ./
-COPY wparams.py read_dat_mod.py simulate.py sweep.py collect.py ./
+
+# Install the sqm package
+COPY src/ src/
+RUN pip install --no-cache-dir .
 
 VOLUME /app/output
 
-CMD ["python", "simulate.py"]
+ENTRYPOINT ["sqm"]
