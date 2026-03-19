@@ -20,6 +20,9 @@ from sqm.config import Config, PathConfig, SimulationConfig, SweepConfig
 from sqm.runner import (
     PointResult,
     SweepResult,
+    _build_param_grid,
+    _prepare_run_directory,
+    _reset_signals,
     _run_fortran_with_progress,
     run_single_point,
     run_sweep,
@@ -564,3 +567,329 @@ class TestRunSinglePointAutocorrelation:
         assert result.n_samples == 10
         assert result.corrected_mean is None
         assert result.n_eff is None
+
+
+# ============================================================
+# 7. _reset_signals() のテスト (L88)
+# ============================================================
+
+
+class TestResetSignals:
+    """_reset_signals() のテスト群"""
+
+    def test_SIGINTのデフォルトハンドラが復元される(self) -> None:
+        """_reset_signals() が SIGINT を SIG_DFL に設定することを確認する"""
+        import signal
+
+        # 一時的に SIGINT を SIG_IGN に変更
+        original = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        try:
+            _reset_signals()
+            handler = signal.getsignal(signal.SIGINT)
+            assert handler == signal.SIG_DFL
+        finally:
+            # 元のハンドラに復元
+            signal.signal(signal.SIGINT, original)
+
+
+# ============================================================
+# 8. run_single_point() の show_progress=True パス (L181)
+# ============================================================
+
+
+class TestRunSinglePointShowProgress:
+    """run_single_point() の show_progress=True パスのテスト群"""
+
+    @patch("sqm.runner._run_fortran_with_progress")
+    def test_show_progress有効時にprogress関数が呼ばれる(
+        self, mock_progress: MagicMock, tmp_path: Path
+    ) -> None:
+        """show_progress=True の場合、_run_fortran_with_progress が呼ばれる"""
+        config = Config(
+            simulation=SimulationConfig(Nsample=5),
+            paths=PathConfig(
+                output_dir=tmp_path,
+                figures_dir=tmp_path / "figures",
+                fortran_binary=Path("/usr/bin/true"),
+            ),
+        )
+
+        # Fortran が生成するはずの偽バイナリを事前作成
+        dat_path = tmp_path / "U=20.0,mu=0.5,s=1d0.dat"
+        _create_test_binary(dat_path, Nx=4, n_samples=5, U=20.0, mu=0.5)
+
+        result = run_single_point(
+            U=20.0,
+            mu=0.5,
+            config=config,
+            skip_autocorrelation=True,
+            show_progress=True,
+        )
+
+        assert isinstance(result, PointResult)
+        mock_progress.assert_called_once()
+        # 第一引数が PathConfig であること
+        call_args = mock_progress.call_args
+        assert call_args[0][0] == config.paths
+
+
+# ============================================================
+# 9. _build_param_grid() の U スイープパス (L260-261)
+# ============================================================
+
+
+class TestBuildParamGrid:
+    """_build_param_grid() のテスト群"""
+
+    def test_Uスイープ時のパラメータグリッド構築(self) -> None:
+        """sweep_param == 'U' の場合、mu が固定され U がスイープされる"""
+        sweep = SweepConfig(mu=1.5, U_start=10.0, U_end=30.0, U_step=10.0)
+
+        param_grid, sweep_name, fixed_value = _build_param_grid(sweep)
+
+        assert sweep_name == "U"
+        assert fixed_value == pytest.approx(1.5)
+        # U=10.0, U=20.0 の 2 点
+        assert len(param_grid) == 2
+        # 各タプルは (U, mu) で mu=1.5 固定
+        for _U_val, mu_val in param_grid:
+            assert mu_val == pytest.approx(1.5)
+
+    def test_Uスイープでmu未指定の場合はデフォルト0(self) -> None:
+        """mu が None の場合、fixed_value は 0.0 になる"""
+        sweep = SweepConfig(U_start=10.0, U_end=30.0, U_step=10.0)
+
+        param_grid, sweep_name, fixed_value = _build_param_grid(sweep)
+
+        assert sweep_name == "U"
+        assert fixed_value == pytest.approx(0.0)
+        for _U_val, mu_val in param_grid:
+            assert mu_val == pytest.approx(0.0)
+
+
+# ============================================================
+# 10. _prepare_run_directory() の U スイープラベル (L276) + 既存リンク削除 (L295)
+# ============================================================
+
+
+class TestPrepareRunDirectory:
+    """_prepare_run_directory() のテスト群"""
+
+    def test_Uスイープ時のランディレクトリラベル(self, tmp_path: Path) -> None:
+        """sweep_name='U' の場合、ディレクトリ名に sweep_U_mu が含まれる"""
+        config = Config(
+            paths=PathConfig(
+                output_dir=tmp_path,
+                figures_dir=tmp_path / "figures",
+                fortran_binary=Path("/usr/bin/true"),
+            ),
+        )
+
+        updated_config = _prepare_run_directory(config, "U", 1.5)
+
+        run_dir = updated_config.paths.output_dir
+        assert "sweep_U_mu1.5" in run_dir.name
+        assert run_dir.exists()
+        assert (run_dir / "figures").exists()
+
+    def test_既存のlatestリンクが更新される(self, tmp_path: Path) -> None:
+        """既に latest シンボリックリンクが存在する場合、正しく更新される"""
+        config = Config(
+            paths=PathConfig(
+                output_dir=tmp_path,
+                figures_dir=tmp_path / "figures",
+                fortran_binary=Path("/usr/bin/true"),
+            ),
+        )
+
+        # 初回: latest リンクを作成
+        _prepare_run_directory(config, "mu", 20.0)
+        latest_link = tmp_path / "latest"
+        assert latest_link.is_symlink()
+        assert latest_link.resolve().name  # 初回のターゲットが存在すること
+
+        # 2回目: latest リンクが更新される（L295: unlink が実行される）
+        updated_config = _prepare_run_directory(config, "mu", 20.0)
+        assert latest_link.is_symlink()
+        second_target = updated_config.paths.output_dir.name
+        # latest が最新のディレクトリを指していることを確認
+        assert (tmp_path / latest_link.readlink()).name == second_target
+
+
+# ============================================================
+# 11. _execute_sweep の KeyboardInterrupt (L358-362) + run_sweep の中断パス (L480)
+# ============================================================
+
+
+class _InterruptingExecutor:
+    """as_completed の反復中に KeyboardInterrupt を発生させるモックエグゼキュータ。
+
+    _execute_sweep の KeyboardInterrupt ハンドリングをテストする。
+    futures 辞書は正常に構築されるが、future.result() 呼び出し時に
+    KeyboardInterrupt が発生するようにする。
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        pass
+
+    def __enter__(self) -> _InterruptingExecutor:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        pass
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        pass
+
+    def submit(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Future[Any]:
+        future: Future[Any] = Future()
+        # result() 呼び出し時に KeyboardInterrupt を発生させる
+        future.set_exception(KeyboardInterrupt())
+        return future
+
+
+class TestExecuteSweepInterrupt:
+    """_execute_sweep の KeyboardInterrupt テスト群"""
+
+    @patch("sqm.runner.plot_sweep_summary")
+    @patch("sqm.runner.plot_correlation")
+    @patch(
+        "sqm.runner.ProcessPoolExecutor",
+        new=_InterruptingExecutor,
+    )
+    @patch("sqm.runner.run_single_point")
+    def test_KeyboardInterruptで中断フラグが立つ(
+        self,
+        mock_rsp: MagicMock,
+        mock_plot_corr: MagicMock,
+        mock_plot_summary: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """KeyboardInterrupt 発生時、中断パスを通り SweepResult が返される"""
+        config = Config(
+            paths=PathConfig(
+                output_dir=tmp_path,
+                figures_dir=tmp_path / "figures",
+                fortran_binary=Path("/usr/bin/true"),
+            ),
+            sweep=SweepConfig(U=20.0, mu_start=0.0, mu_end=4.0, mu_step=2.0),
+        )
+
+        result = run_sweep(config, max_workers=1)
+
+        # 中断されたので plot は呼ばれない
+        mock_plot_corr.assert_not_called()
+        mock_plot_summary.assert_not_called()
+        # SweepResult は返される（中断パス L480）
+        assert isinstance(result, SweepResult)
+        assert len(result.points) == 0
+
+
+# ============================================================
+# 12. run_sweep の max_workers 自動決定 (L445)
+# ============================================================
+
+
+class TestRunSweepAutoWorkers:
+    """run_sweep() の max_workers 自動決定テスト群"""
+
+    @patch("sqm.runner.plot_sweep_summary")
+    @patch("sqm.runner.plot_correlation")
+    @patch(
+        "sqm.runner.ProcessPoolExecutor",
+        new=_SequentialExecutor,
+    )
+    @patch("sqm.runner.run_single_point")
+    def test_max_workers未指定時に自動決定される(
+        self,
+        mock_rsp: MagicMock,
+        mock_plot_corr: MagicMock,
+        mock_plot_summary: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """max_workers=None の場合、自動的にワーカー数が決定される"""
+        config = Config(
+            paths=PathConfig(
+                output_dir=tmp_path,
+                figures_dir=tmp_path / "figures",
+                fortran_binary=Path("/usr/bin/true"),
+            ),
+            sweep=SweepConfig(U=20.0, mu_start=0.0, mu_end=4.0, mu_step=2.0),
+        )
+
+        def side_effect(U: float, mu: float, cfg: Config, **kwargs: object) -> PointResult:
+            return PointResult(
+                U=U,
+                mu=mu,
+                correlation_midpoint=0.5,
+                correlation_mean=np.zeros(4),
+                correlation_err=np.zeros(4),
+                n_samples=5,
+            )
+
+        mock_rsp.side_effect = side_effect
+
+        # max_workers=None で呼び出す（L445 をカバー）
+        result = run_sweep(config, max_workers=None)
+
+        assert isinstance(result, SweepResult)
+        assert len(result.points) == 2
+        assert mock_rsp.call_count == 2
+
+
+# ============================================================
+# 13. run_sweep で U スイープ実行 (L260-261, L276 の統合テスト)
+# ============================================================
+
+
+class TestRunSweepUSweep:
+    """run_sweep() の U スイープパスの統合テスト群"""
+
+    @patch("sqm.runner.plot_sweep_summary")
+    @patch("sqm.runner.plot_correlation")
+    @patch(
+        "sqm.runner.ProcessPoolExecutor",
+        new=_SequentialExecutor,
+    )
+    @patch("sqm.runner.run_single_point")
+    def test_Uスイープが正しく実行される(
+        self,
+        mock_rsp: MagicMock,
+        mock_plot_corr: MagicMock,
+        mock_plot_summary: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """U をスイープし mu を固定した場合のエンドツーエンドテスト"""
+        config = Config(
+            paths=PathConfig(
+                output_dir=tmp_path,
+                figures_dir=tmp_path / "figures",
+                fortran_binary=Path("/usr/bin/true"),
+            ),
+            sweep=SweepConfig(mu=1.0, U_start=10.0, U_end=30.0, U_step=10.0),
+        )
+
+        def side_effect(U: float, mu: float, cfg: Config, **kwargs: object) -> PointResult:
+            return PointResult(
+                U=U,
+                mu=mu,
+                correlation_midpoint=1.0 / (1.0 + U),
+                correlation_mean=np.zeros(4),
+                correlation_err=np.zeros(4),
+                n_samples=5,
+            )
+
+        mock_rsp.side_effect = side_effect
+
+        result = run_sweep(config, max_workers=1)
+
+        # U=10.0, U=20.0 の 2 点
+        assert len(result.points) == 2
+        assert mock_rsp.call_count == 2
+        # mu は固定値 1.0
+        for pt in result.points:
+            assert pt.mu == pytest.approx(1.0)
+        # U 昇順にソートされている
+        assert result.points[0].U <= result.points[1].U

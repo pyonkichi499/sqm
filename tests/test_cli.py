@@ -306,3 +306,218 @@ def test_config_show_Configデータクラスベースで表示する(tmp_path):
     assert result.exit_code == 0
     assert "simulation" in result.output
     assert "Nsample" in result.output
+
+
+def test_sweep_muとUの両方をスイープするとエラー():
+    """--mu-start/end/step と --u-start/end/step を同時に指定するとエラー (L112)"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--mu-start",
+            "0",
+            "--mu-end",
+            "10",
+            "--mu-step",
+            "2",
+            "--u-start",
+            "0",
+            "--u-end",
+            "30",
+            "--u-step",
+            "5",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Cannot sweep both" in result.output
+
+
+def test_sweep_固定muとmuスイープを同時指定するとエラー():
+    """--mu (固定値) と --mu-start/end/step (スイープ) を同時に指定するとエラー (L115)"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--mu",
+            "5",
+            "--mu-start",
+            "0",
+            "--mu-end",
+            "10",
+            "--mu-step",
+            "2",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Cannot specify both --mu" in result.output
+
+
+def test_sweep_固定UとUスイープを同時指定するとエラー():
+    """--u (固定値) と --u-start/end/step (スイープ) を同時に指定するとエラー (L118)"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--u",
+            "20",
+            "--u-start",
+            "0",
+            "--u-end",
+            "30",
+            "--u-step",
+            "5",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Cannot specify both --u" in result.output
+
+
+def test_sweep_スイープ範囲未指定でエラー():
+    """スイープ範囲を何も指定しないとエラー (L121)"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--u",
+            "20",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Must specify a sweep range" in result.output
+
+
+def test_sweep_実行モードでrun_sweepが呼ばれる(monkeypatch):
+    """dry-run でない場合に run_sweep が呼ばれてサマリーが表示される (L178-194)"""
+    from unittest.mock import MagicMock
+
+    from sqm.runner import PointResult, SweepResult
+
+    mock_result = SweepResult(
+        points=[
+            PointResult(
+                U=20.0,
+                mu=2.0,
+                correlation_midpoint=0.5,
+                correlation_mean=__import__("numpy").array([0.1, 0.2]),
+                correlation_err=__import__("numpy").array([0.01, 0.02]),
+            ),
+            PointResult(
+                U=20.0,
+                mu=4.0,
+                correlation_midpoint=0.6,
+                correlation_mean=__import__("numpy").array([0.1, 0.2]),
+                correlation_err=__import__("numpy").array([0.01, 0.02]),
+            ),
+        ],
+        failed=[],
+        config=Config(),
+        walltime_seconds=5.3,
+    )
+
+    mock_run_sweep = MagicMock(return_value=mock_result)
+    monkeypatch.setattr("sqm.cli.run_sweep", mock_run_sweep)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--u",
+            "20",
+            "--mu-start",
+            "0",
+            "--mu-end",
+            "4",
+            "--mu-step",
+            "2",
+            "--nsample",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "完了: 2 成功, 0 失敗" in result.output
+    assert "実行時間: 5.3 秒" in result.output
+    assert "出力ディレクトリ" in result.output
+    assert "グラフ" in result.output
+    mock_run_sweep.assert_called_once()
+
+
+def test_sweep_実行モードで失敗ポイントが表示される(monkeypatch):
+    """run_sweep に失敗ポイントがある場合に失敗情報が表示される (L195-198)"""
+    from unittest.mock import MagicMock
+
+    from sqm.runner import SweepResult
+
+    mock_result = SweepResult(
+        points=[],
+        failed=[(20.0, 6.0, "Fortran binary not found")],
+        config=Config(),
+        walltime_seconds=1.0,
+    )
+
+    mock_run_sweep = MagicMock(return_value=mock_result)
+    monkeypatch.setattr("sqm.cli.run_sweep", mock_run_sweep)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--u",
+            "20",
+            "--mu-start",
+            "0",
+            "--mu-end",
+            "10",
+            "--mu-step",
+            "2",
+            "--nsample",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "0 成功, 1 失敗" in result.output
+    assert "失敗ポイント:" in result.output
+    assert "U=20.0, mu=6.0: Fortran binary not found" in result.output
+
+
+def test_sweep_Uスイープ実行モードで正しいパラメータが渡される(monkeypatch):
+    """U スイープ実行時に固定 mu と sweep U のサマリーが表示される"""
+    from unittest.mock import MagicMock
+
+    from sqm.runner import SweepResult
+
+    mock_result = SweepResult(
+        points=[],
+        failed=[],
+        config=Config(),
+        walltime_seconds=0.5,
+    )
+
+    mock_run_sweep = MagicMock(return_value=mock_result)
+    monkeypatch.setattr("sqm.cli.run_sweep", mock_run_sweep)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "sweep",
+            "--mu",
+            "10",
+            "--u-start",
+            "0",
+            "--u-end",
+            "30",
+            "--u-step",
+            "10",
+            "--nsample",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Sweep U" in result.output
+    assert "fixed mu=10" in result.output
