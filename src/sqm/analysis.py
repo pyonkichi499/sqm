@@ -5,8 +5,23 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import numpy.typing as npt
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "jackknife",
+    "compute_correlation",
+    "autocorrelation",
+    "integrated_autocorr_time",
+    "effective_sample_size",
+    "detect_thermalization",
+    "thin_data",
+    "corrected_error",
+]
 
 # ============================================================
 # ジャックナイフ法
@@ -28,6 +43,8 @@ def jackknife(arr: npt.ArrayLike) -> tuple[float, float]:
     """
     arr = np.real(np.asarray(arr))
     n: int = len(arr)
+    if n < 2:
+        raise ValueError("jackknife には2つ以上のサンプルが必要です")
     total: float = float(np.sum(arr))
     jk_mean: npt.NDArray[np.float64] = (total - arr) / (n - 1)
     jk_mm: float = total / n
@@ -121,6 +138,8 @@ def autocorrelation(
     acf_full = np.fft.ifft(fft_x * np.conj(fft_x)).real[:n]
 
     # 正規化: ラグ0で割る（= N * var）
+    if acf_full[0] < 1e-15:
+        return np.ones(max_lag + 1, dtype=np.float64)
     acf_full /= acf_full[0]
 
     return acf_full[: max_lag + 1].copy()
@@ -166,16 +185,21 @@ def integrated_autocorr_time(
         積分自己相関時間 τ_int。
     """
     n = len(data)
+    if n < 4:
+        return 0.5
+
     max_lag = min(n - 1, n // 2)
     acf = autocorrelation(data, max_lag=max_lag)
 
     # τ_int の累積和を計算: τ_int(M) = 0.5 + Σ_{k=1}^{M} ρ(k)
     tau_cumsum = 0.5 + np.cumsum(acf[1:])
+    if len(tau_cumsum) == 0:
+        return 0.5
 
     # 自動ウィンドウで打ち切りラグを決定
     window = _auto_window(tau_cumsum)
 
-    return float(tau_cumsum[window - 1]) if window >= 1 else 0.5
+    return float(tau_cumsum[min(window - 1, len(tau_cumsum) - 1)]) if window >= 1 else 0.5
 
 
 def effective_sample_size(
@@ -243,10 +267,13 @@ def detect_thermalization(
     deviations = np.abs(window_means - stationary_mean)
 
     # 閾値を設定（定常状態の平均から3σ以内に入っていれば定常とみなす）
-    threshold = 1e-10 if stationary_std < 1e-15 else 3.0 * stationary_std
+    if stationary_std < 1e-15:
+        threshold = max(np.abs(window_means).max() * 0.01, 1e-10)
+    else:
+        threshold = 3.0 * stationary_std
 
-    # 連続するウィンドウ数（少なくとも3つ連続で閾値内なら定常と判断）
-    n_consecutive = min(3, n_windows // 3)
+    # 連続するウィンドウ数（少なくとも2つ連続で閾値内なら定常と判断）
+    n_consecutive = max(2, min(3, n_windows // 3))
 
     # 最初に n_consecutive 個連続で閾値内のウィンドウを探す
     for i in range(n_windows - n_consecutive + 1):

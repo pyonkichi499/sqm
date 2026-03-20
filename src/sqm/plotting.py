@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["configure_plot", "plot_correlation", "plot_sweep_summary"]
 
 _configured = False
 

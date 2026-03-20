@@ -9,6 +9,7 @@ import logging
 import os
 import signal
 import subprocess
+import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
@@ -25,11 +26,14 @@ from sqm.analysis import (
     effective_sample_size,
 )
 from sqm.config import Config, PathConfig, SweepConfig
+from sqm.exceptions import BinaryFormatError, FortranExecutionError
 from sqm.experiment_log import ExperimentLog
 from sqm.fortran_io import read_dat, write_params
 from sqm.plotting import plot_correlation, plot_sweep_summary
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["PointResult", "SweepResult", "run_single_point", "run_sweep"]
 
 
 # =============================================================================
@@ -107,9 +111,20 @@ def _run_fortran_with_progress(
         preexec_fn=_reset_signals,
     )
     assert proc.stdout is not None
+
+    # stderr を別スレッドで読み取りパイプバッファのデッドロックを防止
+    stderr_chunks: list[bytes] = []
+
+    def _drain_stderr() -> None:
+        if proc.stderr:
+            stderr_chunks.append(proc.stderr.read())
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
     try:
         for raw_line in iter(proc.stdout.readline, b""):
-            line = raw_line.decode().strip()
+            line = raw_line.decode(errors="replace").strip()
             if line.startswith("sample:"):
                 parts = line.split()
                 current = parts[1]
@@ -118,10 +133,12 @@ def _run_fortran_with_progress(
     except KeyboardInterrupt:
         proc.terminate()
         proc.wait()
+        stderr_thread.join(timeout=5)
         raise
     proc.wait()
+    stderr_thread.join(timeout=5)
     if proc.returncode != 0:
-        stderr_out = proc.stderr.read().decode() if proc.stderr else ""
+        stderr_out = b"".join(stderr_chunks).decode(errors="replace")
         raise subprocess.CalledProcessError(proc.returncode, proc.args, stderr=stderr_out)
 
 
@@ -180,7 +197,7 @@ def run_single_point(
         if show_progress:
             _run_fortran_with_progress(paths, params_filename, U, mu, sim.Nsample)
         else:
-            print(f"  U={U:.1f}, mu={mu:.1f}: running ({sim.Nsample} samples)...", flush=True)
+            logger.info("U=%.1f, mu=%.1f: running (%d samples)...", U, mu, sim.Nsample)
             subprocess.run(
                 [str(paths.fortran_binary), params_filename],
                 check=True,
@@ -250,14 +267,14 @@ def _build_param_grid(
     sweep: SweepConfig,
 ) -> tuple[list[tuple[float, float]], str, float]:
     """スイープ設定からパラメータグリッド、スイープ名、固定値を構築する。"""
-    sweep_values = sweep.sweep_values()
-    sweep_name = sweep.sweep_param
+    info = sweep.get_sweep_info()
+    sweep_name = info["sweep_name"]
+    fixed_value = info["fixed_value"]
+    sweep_values = info["sweep_values"]
 
     if sweep_name == "mu":
-        fixed_value = sweep.U if sweep.U is not None else 0.0
         param_grid = [(fixed_value, mu_val) for mu_val in sweep_values]
     else:
-        fixed_value = sweep.mu if sweep.mu is not None else 0.0
         param_grid = [(U_val, fixed_value) for U_val in sweep_values]
 
     return param_grid, sweep_name, fixed_value
@@ -289,11 +306,13 @@ def _prepare_run_directory(
     figures_dir.mkdir(parents=True, exist_ok=True)
     config.to_yaml(run_dir / "config.yaml")
 
-    # latest シンボリックリンクを更新
+    # latest シンボリックリンクを更新（レースコンディション回避）
     latest_link = run_dir.parent / "latest"
-    if latest_link.is_symlink() or latest_link.exists():
-        latest_link.unlink()
-    latest_link.symlink_to(run_dir.name)
+    try:
+        latest_link.unlink(missing_ok=True)
+        latest_link.symlink_to(run_dir.name)
+    except OSError:
+        logger.warning("latest シンボリックリンクの更新に失敗しました")
 
     return config
 
@@ -335,10 +354,9 @@ def _execute_sweep(
             try:
                 result = future.result()
                 points.append(result)
-                print(
-                    f"  [{completed}/{total}] U={U:.1f}, mu={mu:.1f}"
-                    f" done ({result.n_samples} samples, {elapsed:.1f}s elapsed)",
-                    flush=True,
+                logger.info(
+                    "[%d/%d] U=%.1f, mu=%.1f done (%d samples, %.1fs elapsed)",
+                    completed, total, U, mu, result.n_samples, elapsed,
                 )
                 exp_log.add_result(
                     f"U={U}_mu={mu}",
@@ -347,16 +365,22 @@ def _execute_sweep(
                     n_eff=result.n_eff,
                     thermalization_skip=result.thermalization_skip,
                 )
-            except Exception as e:
-                failed.append((U, mu, str(e)))
-                print(
-                    f"  [{completed}/{total}] U={U:.1f}, mu={mu:.1f}"
-                    f" FAILED ({elapsed:.1f}s elapsed)",
-                    flush=True,
+            except (
+                subprocess.CalledProcessError,
+                FortranExecutionError,
+                BinaryFormatError,
+                FileNotFoundError,
+                ValueError,
+                OSError,
+            ) as e:
+                failed.append((U, mu, f"{type(e).__name__}: {e}"))
+                logger.warning(
+                    "[%d/%d] U=%.1f, mu=%.1f FAILED (%.1fs elapsed)",
+                    completed, total, U, mu, elapsed,
                 )
-                logger.error("U=%.1f, mu=%.1f 失敗: %s", U, mu, e)
+                logger.error("U=%.1f, mu=%.1f 失敗: %s: %s", U, mu, type(e).__name__, e)
     except KeyboardInterrupt:
-        print("\n中断しました。子プロセスを停止中...", flush=True)
+        logger.warning("中断しました。子プロセスを停止中...")
         for f in futures:
             f.cancel()
         interrupted = True

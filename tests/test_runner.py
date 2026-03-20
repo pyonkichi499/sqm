@@ -392,7 +392,7 @@ class TestRunSweep:
         # mu=2.0 の場合のみ例外を発生させる
         def side_effect(U: float, mu: float, cfg: Config, **kwargs: object) -> PointResult:
             if mu == pytest.approx(2.0):
-                raise RuntimeError("Fortran シミュレーション失敗")
+                raise OSError("Fortran シミュレーション失敗")
             return PointResult(
                 U=U,
                 mu=mu,

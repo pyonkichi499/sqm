@@ -316,7 +316,8 @@ def _configure_logging(*, verbose: bool, quiet: bool) -> None:
 
     logging.basicConfig(
         level=level,
-        format="%(levelname)s: %(message)s",
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%H:%M:%S",
     )
     logger.setLevel(level)
 

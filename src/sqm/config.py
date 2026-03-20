@@ -7,15 +7,31 @@ YAML / JSON によるシリアライゼーションを提供する。
 from __future__ import annotations
 
 import json
+import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "SimulationConfig",
+    "PathConfig",
+    "SweepConfig",
+    "SeedConfig",
+    "Config",
+]
+
 # =============================================================================
 # Round 1: SimulationConfig
 # =============================================================================
+
+
+# Fortran 倍精度リテラルのパターン (例: "0.3d0", "1d-5", "0.3d+2")
+_FORTRAN_DOUBLE_RE = re.compile(r"^-?\d+\.?\d*[dD][+-]?\d+$")
 
 
 @dataclass
@@ -26,6 +42,16 @@ class SimulationConfig:
     ds: str = "0.3d-5"
     s_end: str = "1d0"
     Nsample: int = 200
+
+    def __post_init__(self) -> None:
+        if self.Nsample < 1:
+            raise ValueError(f"Nsample は1以上が必要です: {self.Nsample}")
+        for name, value in [("dtau", self.dtau), ("ds", self.ds), ("s_end", self.s_end)]:
+            if not _FORTRAN_DOUBLE_RE.match(value):
+                raise ValueError(
+                    f"{name} は Fortran 倍精度リテラル形式が必要です "
+                    f'(例: "0.3d0"): "{value}"'
+                )
 
 
 # =============================================================================
@@ -95,6 +121,18 @@ class SweepConfig:
             return "mu"
         return "U"
 
+    @staticmethod
+    def _generate_range(start: float, end: float, step: float, name: str) -> list[float]:
+        """start から end 未満まで step 刻みで等差数列を生成する。"""
+        if step <= 0:
+            raise ValueError(f"{name}_step は正の値が必要です: {step}")
+        values: list[float] = []
+        current = start
+        while current < end:
+            values.append(current)
+            current = round(current + step, 10)
+        return values
+
     def sweep_values(self) -> list[float]:
         """スイープ値のリストを返す
 
@@ -106,25 +144,33 @@ class SweepConfig:
         if self.sweep_param == "mu":
             if self.mu_start is None or self.mu_end is None or self.mu_step is None:
                 raise ValueError("mu スイープのパラメータが不足しています")
-            if self.mu_step <= 0:
-                raise ValueError(f"mu_step は正の値が必要です: {self.mu_step}")
-            values: list[float] = []
-            current = self.mu_start
-            while current < self.mu_end:
-                values.append(current)
-                current = round(current + self.mu_step, 10)
-            return values
+            return self._generate_range(self.mu_start, self.mu_end, self.mu_step, "mu")
         else:
             if self.U_start is None or self.U_end is None or self.U_step is None:
                 raise ValueError("U スイープのパラメータが不足しています")
-            if self.U_step <= 0:
-                raise ValueError(f"U_step は正の値が必要です: {self.U_step}")
-            values = []
-            current = self.U_start
-            while current < self.U_end:
-                values.append(current)
-                current = round(current + self.U_step, 10)
-            return values
+            return self._generate_range(self.U_start, self.U_end, self.U_step, "U")
+
+    def get_sweep_info(self) -> dict[str, Any]:
+        """スイープ情報をまとめて返す。
+
+        Returns
+        -------
+        dict with keys: sweep_name, fixed_name, fixed_value, sweep_values
+        """
+        sweep_name = self.sweep_param
+        values = self.sweep_values()
+        if sweep_name == "mu":
+            fixed_name = "U"
+            fixed_value = self.U if self.U is not None else 0.0
+        else:
+            fixed_name = "mu"
+            fixed_value = self.mu if self.mu is not None else 0.0
+        return {
+            "sweep_name": sweep_name,
+            "fixed_name": fixed_name,
+            "fixed_value": fixed_value,
+            "sweep_values": values,
+        }
 
 
 # =============================================================================
@@ -144,6 +190,13 @@ class SeedConfig:
 
     mode: str = "system"
     base_seed: int | None = None
+
+    def __post_init__(self) -> None:
+        valid_modes = {"system", "fixed", "hybrid"}
+        if self.mode not in valid_modes:
+            raise ValueError(f"未知のモード: {self.mode} (有効: {valid_modes})")
+        if self.mode in ("fixed", "hybrid") and self.base_seed is None:
+            raise ValueError(f"{self.mode} モードでは base_seed が必要です")
 
     def get_seed(self, process_id: int = 0) -> int | None:
         """プロセスIDに応じたシードを返す
@@ -190,7 +243,10 @@ class Config:
         if not path.exists():
             raise FileNotFoundError(f"設定ファイルが見つかりません: {path}")
         with open(path, encoding="utf-8") as f:
-            data: dict[str, Any] = yaml.safe_load(f) or {}
+            try:
+                data: dict[str, Any] = yaml.safe_load(f) or {}
+            except yaml.YAMLError as e:
+                raise ValueError(f"YAML パースエラー ({path}): {e}") from e
         return cls._from_dict(data)
 
     def to_yaml(self, path: Path) -> None:
@@ -211,7 +267,10 @@ class Config:
         if not path.exists():
             raise FileNotFoundError(f"設定ファイルが見つかりません: {path}")
         with open(path, encoding="utf-8") as f:
-            data: dict[str, Any] = json.load(f)
+            try:
+                data: dict[str, Any] = json.load(f)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"JSON パースエラー ({path}): {e}") from e
         return cls._from_dict(data)
 
     def to_json(self, path: Path) -> None:

@@ -34,6 +34,18 @@ def test_SimulationConfig_カスタム値を設定できる():
     assert cfg.Nsample == 500
 
 
+def test_SimulationConfig_Nsampleが0以下でValueError():
+    """Nsample < 1 で ValueError"""
+    with pytest.raises(ValueError, match="Nsample は1以上"):
+        SimulationConfig(Nsample=0)
+
+
+def test_SimulationConfig_不正なFortranリテラルでValueError():
+    """Fortran 倍精度リテラル以外の形式で ValueError"""
+    with pytest.raises(ValueError, match="Fortran 倍精度リテラル"):
+        SimulationConfig(dtau="0.3")
+
+
 # =============================================================================
 # Round 2: PathConfig
 # =============================================================================
@@ -82,6 +94,25 @@ def test_SweepConfig_両方固定でValueError():
     """UとmuをどちらもスカラーにするとValueError"""
     with pytest.raises(ValueError):
         SweepConfig(U=20.0, mu=10.0)
+
+
+def test_SweepConfig_get_sweep_infoでmu情報を返す():
+    """get_sweep_info で sweep_name, fixed_name, fixed_value, sweep_values を返す"""
+    cfg = SweepConfig(U=20.0, mu_start=0.0, mu_end=4.0, mu_step=2.0)
+    info = cfg.get_sweep_info()
+    assert info["sweep_name"] == "mu"
+    assert info["fixed_name"] == "U"
+    assert info["fixed_value"] == pytest.approx(20.0)
+    assert info["sweep_values"] == [pytest.approx(0.0), pytest.approx(2.0)]
+
+
+def test_SweepConfig_get_sweep_infoでU情報を返す():
+    """U スイープ時の get_sweep_info"""
+    cfg = SweepConfig(mu=1.0, U_start=10.0, U_end=30.0, U_step=10.0)
+    info = cfg.get_sweep_info()
+    assert info["sweep_name"] == "U"
+    assert info["fixed_name"] == "mu"
+    assert info["fixed_value"] == pytest.approx(1.0)
 
 
 def test_SweepConfig_両方スイープでValueError():
@@ -158,6 +189,24 @@ def test_SeedConfig_systemモードでget_seedはNone():
     """systemモードではget_seedがNoneを返す"""
     cfg = SeedConfig()
     assert cfg.get_seed(process_id=0) is None
+
+
+def test_SeedConfig_不正なモードでValueError():
+    """未知のモードで ValueError"""
+    with pytest.raises(ValueError, match="未知のモード"):
+        SeedConfig(mode="invalid")
+
+
+def test_SeedConfig_fixedモードでbase_seedなしでValueError():
+    """fixed モードで base_seed=None は ValueError"""
+    with pytest.raises(ValueError, match="base_seed が必要"):
+        SeedConfig(mode="fixed", base_seed=None)
+
+
+def test_SeedConfig_hybridモードでbase_seedなしでValueError():
+    """hybrid モードで base_seed=None は ValueError"""
+    with pytest.raises(ValueError, match="base_seed が必要"):
+        SeedConfig(mode="hybrid", base_seed=None)
 
 
 # =============================================================================
@@ -243,3 +292,19 @@ def test_Config_存在しないJSONファイルでFileNotFoundError():
     """存在しないファイルを読み込もうとするとFileNotFoundError"""
     with pytest.raises(FileNotFoundError):
         Config.from_json(Path("/nonexistent/config.json"))
+
+
+def test_Config_不正なYAMLファイルでValueError(tmp_path: Path):
+    """不正な YAML でパースエラー"""
+    bad_yaml = tmp_path / "bad.yaml"
+    bad_yaml.write_text(":\n  - :\n  invalid: [}", encoding="utf-8")
+    with pytest.raises(ValueError, match="YAML パースエラー"):
+        Config.from_yaml(bad_yaml)
+
+
+def test_Config_不正なJSONファイルでValueError(tmp_path: Path):
+    """不正な JSON でパースエラー"""
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("{invalid json", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON パースエラー"):
+        Config.from_json(bad_json)

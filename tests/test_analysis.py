@@ -73,6 +73,14 @@ class TestJackknife:
         # err = sqrt(1 * 25) = 5.0
         assert err == pytest.approx(5.0)
 
+    def test_ジャックナイフ法_1要素配列でValueError(self) -> None:
+        with pytest.raises(ValueError, match="2つ以上のサンプル"):
+            jackknife([42.0])
+
+    def test_ジャックナイフ法_空配列でValueError(self) -> None:
+        with pytest.raises(ValueError, match="2つ以上のサンプル"):
+            jackknife([])
+
 
 # ============================================================
 # 2. compute_correlation() のテスト
@@ -185,6 +193,12 @@ class TestAutocorrelation:
         result = autocorrelation(data)
         assert len(result) == len(data)
 
+    def test_自己相関関数_ほぼ定数のデータでも安定(self) -> None:
+        """分散がほぼゼロだが完全にゼロではないデータ"""
+        data = np.ones(100) + np.finfo(np.float64).eps * np.arange(100)
+        result = autocorrelation(data)
+        assert np.all(np.isfinite(result))
+
 
 # ============================================================
 # 4. integrated_autocorr_time() のテスト
@@ -224,6 +238,18 @@ class TestIntegratedAutocorrTime:
         # 定数列 → 自己相関は全て1 → τ_int は大きな値になる
         # ただし実用的にはwindow打ち切りにより有限値
         assert tau >= 0.5
+
+    def test_積分自己相関時間_3要素以下で0_5を返す(self) -> None:
+        """データが非常に短い場合は安全に0.5を返す"""
+        assert integrated_autocorr_time(np.array([1.0, 2.0, 3.0])) == pytest.approx(0.5)
+        assert integrated_autocorr_time(np.array([1.0, 2.0])) == pytest.approx(0.5)
+
+    def test_積分自己相関時間_4要素で正常に動作(self) -> None:
+        """4要素のデータでエラーにならない"""
+        data = np.array([1.0, 2.0, 3.0, 4.0])
+        tau = integrated_autocorr_time(data)
+        assert tau >= 0.5
+        assert np.isfinite(tau)
 
 
 # ============================================================
@@ -303,6 +329,25 @@ class TestDetectThermalization:
         # どちらも非負値
         assert skip_small >= 0
         assert skip_large >= 0
+
+    def test_thermalization検出_データが窓サイズの2倍未満で0を返す(self) -> None:
+        """短すぎるデータではスキップなし"""
+        data = np.random.randn(15)
+        skip = detect_thermalization(data, window_size=20)
+        assert skip == 0
+
+    def test_thermalization検出_ウィンドウ数が3未満で0を返す(self) -> None:
+        """ウィンドウ数が不足する場合はスキップなし"""
+        data = np.random.randn(25)
+        skip = detect_thermalization(data, window_size=10)
+        assert skip == 0
+
+    def test_thermalization検出_定常データへの収束なしで後半開始を返す(self) -> None:
+        """収束しないデータでは後半の開始点を返す"""
+        # 連続的に変動するデータ（定常にならない）
+        data = np.sin(2 * np.pi * np.arange(1000) / 50) * 100
+        skip = detect_thermalization(data, window_size=10)
+        assert skip >= 0
 
 
 # ============================================================

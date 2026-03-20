@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import platform
 import socket
 import subprocess
@@ -15,6 +16,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["ExperimentLog"]
 
 
 @dataclass
