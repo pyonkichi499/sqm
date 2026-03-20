@@ -2,12 +2,40 @@
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 from click.testing import CliRunner
 
 from sqm.cli import cli
 from sqm.config import Config, SweepConfig
+
+
+def _create_test_binary(
+    filepath: Path,
+    Nx: int = 4,
+    n_samples: int = 30,
+    U: float = 20.0,
+    mu: float = 1.0,
+    Ntau: int = 6,
+) -> None:
+    """テスト用の Fortran バイナリファイルを作成する。"""
+    header_data = struct.pack("<i d d i", Nx, U, mu, Ntau)
+    record_len = len(header_data)
+    header_record = struct.pack("<i", record_len) + header_data + struct.pack("<i", record_len)
+    body_records = b""
+    for i in range(n_samples):
+        a_values = [complex(float(j + 1 + i * 0.1), 0.0) for j in range(Nx)]
+        body_data = b""
+        for v in a_values:
+            body_data += struct.pack("<d d", v.real, v.imag)
+        for v in a_values:
+            body_data += struct.pack("<d d", v.real, v.imag)
+        body_record_len = len(body_data)
+        body_records += (
+            struct.pack("<i", body_record_len) + body_data + struct.pack("<i", body_record_len)
+        )
+    filepath.write_bytes(header_record + body_records)
 
 
 def test_CLI_ヘルプが表示される():
@@ -521,3 +549,54 @@ def test_sweep_Uスイープ実行モードで正しいパラメータが渡さ�
     assert result.exit_code == 0
     assert "Sweep U" in result.output
     assert "fixed mu=10" in result.output
+
+
+# ============================================================
+# analyze コマンドのテスト
+# ============================================================
+
+
+def test_analyze_ヘルプが表示される():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "--help"])
+    assert result.exit_code == 0
+    assert "--input" in result.output
+
+
+def test_analyze_既存datファイルの解析(tmp_path: Path):
+    """既存の .dat ファイルを解析できる"""
+    dat_file = tmp_path / "test.dat"
+    _create_test_binary(dat_file, Nx=4, n_samples=30, U=20.0, mu=1.0)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "--input", str(dat_file)])
+    assert result.exit_code == 0
+    assert "サンプル数" in result.output
+    assert "相関関数" in result.output
+
+
+def test_analyze_存在しないファイルでエラー():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "--input", "/nonexistent/file.dat"])
+    assert result.exit_code != 0
+
+
+def test_analyze_autocorrelation結果を表示(tmp_path: Path):
+    """--skip-autocorrelation なしで自己相関情報も表示"""
+    dat_file = tmp_path / "test.dat"
+    _create_test_binary(dat_file, Nx=4, n_samples=30, U=20.0, mu=1.0)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "--input", str(dat_file)])
+    assert result.exit_code == 0
+    assert "tau_int" in result.output or "有効サンプル数" in result.output
+
+
+def test_analyze_skip_autocorrelationフラグ(tmp_path: Path):
+    """--skip-autocorrelation で自己相関解析をスキップ"""
+    dat_file = tmp_path / "test.dat"
+    _create_test_binary(dat_file, Nx=4, n_samples=30, U=20.0, mu=1.0)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["analyze", "--input", str(dat_file), "--skip-autocorrelation"])
+    assert result.exit_code == 0

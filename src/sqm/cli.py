@@ -5,8 +5,17 @@ import os
 from pathlib import Path
 
 import click
+import numpy as np
 
+from sqm.analysis import (
+    compute_correlation,
+    corrected_error,
+    detect_thermalization,
+    effective_sample_size,
+    integrated_autocorr_time,
+)
 from sqm.config import Config, PathConfig, SimulationConfig, SweepConfig
+from sqm.fortran_io import read_dat
 from sqm.runner import run_sweep
 
 logger = logging.getLogger(__name__)
@@ -196,6 +205,62 @@ def sweep(
         click.echo("失敗ポイント:")
         for fu, fmu, msg in result.failed:
             click.echo(f"  U={fu}, mu={fmu}: {msg}")
+
+
+@cli.command()
+@click.option(
+    "--input", "input_path", required=True,
+    type=click.Path(exists=True), help="Path to .dat binary file",
+)
+@click.option(
+    "--skip-autocorrelation", is_flag=True, default=False,
+    help="Skip autocorrelation analysis",
+)
+@click.option("-v", "--verbose", is_flag=True, default=False, help="Enable debug logging")
+def analyze(input_path: str, skip_autocorrelation: bool, verbose: bool) -> None:
+    """Analyze an existing Fortran binary (.dat) file."""
+    _configure_logging(verbose=verbose, quiet=False)
+
+    filepath = Path(input_path)
+    header, body = read_dat(filepath)
+
+    Nx = int(header[0]["Nx"])
+    U = float(header[0]["U"])
+    mu = float(header[0]["mu"])
+    Ntau = int(header[0]["Ntau"])
+    n_samples = len(body)
+
+    a_list = [b["a"] for b in body]
+    a_ast_list = [b["a_ast"] for b in body]
+
+    click.echo(f"ファイル: {filepath.name}")
+    click.echo(f"  Nx={Nx}, Ntau={Ntau}, U={U}, mu={mu}")
+    click.echo(f"  サンプル数: {n_samples}")
+
+    # 相関関数計算
+    corr_mean, corr_err = compute_correlation(a_list, a_ast_list, Nx)
+    mid = Nx // 2
+    click.echo("\n相関関数 <a_0 a*_i>:")
+    click.echo(f"  midpoint (i={mid}): {corr_mean[mid]:.6f} +/- {corr_err[mid]:.6f}")
+    click.echo(f"  i=0: {corr_mean[0]:.6f} +/- {corr_err[0]:.6f}")
+
+    # 自己相関解析
+    if not skip_autocorrelation and n_samples > 20:
+        midpoint_series = np.array(
+            [np.real(a_list[i][0] * a_ast_list[i][mid]) for i in range(n_samples)]
+        )
+        therm_skip = detect_thermalization(midpoint_series)
+        trimmed = midpoint_series[therm_skip:]
+
+        tau = integrated_autocorr_time(trimmed)
+        n_eff = effective_sample_size(trimmed)
+        c_mean, c_err = corrected_error(trimmed)
+
+        click.echo("\n自己相関解析:")
+        click.echo(f"  thermalization skip: {therm_skip}")
+        click.echo(f"  tau_int: {tau:.2f}")
+        click.echo(f"  有効サンプル数: {n_eff:.1f}")
+        click.echo(f"  補正済み平均: {c_mean:.6f} +/- {c_err:.6f}")
 
 
 @cli.group()
