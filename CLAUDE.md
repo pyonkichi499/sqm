@@ -79,8 +79,9 @@ rye run pytest tests/ -v --cov=src/sqm  # Run with coverage
 - `cli.py` - Click CLI entry point with `sweep` and `config` command groups
 - `config.py` - Configuration management with nested dataclasses (`Config`, `SimulationConfig`, `PathConfig`, `SweepConfig`, `SeedConfig`) and YAML/JSON serialization
 - `experiment_log.py` - Structured experiment logging with Git info capture, environment metadata, JSON persistence, and warning generation
-- `fortran_io.py` - Fortran binary I/O (`read_dat`), Fortran NAMELIST parameter file generation (`&params` and `&sampling_setting`), and legacy wrapper (`readfile`)
+- `fortran_io.py` - Fortran binary I/O (`read_dat`), Fortran NAMELIST parameter file generation (`write_params`: `&params` and `&sampling_setting`)
 - `plotting.py` - Visualization: correlation plots (`plot_correlation`), sweep summary plots
+- `exceptions.py` - Custom exception hierarchy (`SQMError`, `FortranExecutionError`, `BinaryFormatError`, `ConfigurationError`)
 - `runner.py` - Simulation orchestration with `ProcessPoolExecutor` for parallel parameter sweeps
 
 ### Fortran (fortran/)

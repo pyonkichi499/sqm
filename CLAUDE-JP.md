@@ -79,8 +79,9 @@ rye run pytest tests/ -v --cov=src/sqm  # カバレッジ付きで実行
 - `cli.py` - Click CLIエントリポイント。`sweep` と `config` のコマンドグループを持つ
 - `config.py` - ネストされたdataclassによる設定管理（`Config`, `SimulationConfig`, `PathConfig`, `SweepConfig`, `SeedConfig`）。YAML/JSONシリアライゼーション対応
 - `experiment_log.py` - 構造化された実験ログ。Git情報取得、環境メタデータ、JSON永続化、警告生成機能
-- `fortran_io.py` - FortranバイナリI/O（`read_dat`）、Fortran NAMELISTパラメータファイルの生成（`&params` と `&sampling_setting`）、レガシーラッパー（`readfile`）
+- `fortran_io.py` - FortranバイナリI/O（`read_dat`）、Fortran NAMELISTパラメータファイル生成（`write_params`: `&params` と `&sampling_setting`）
 - `plotting.py` - 可視化: 相関関数プロット（`plot_correlation`）、スイープサマリープロット
+- `exceptions.py` - カスタム例外階層（`SQMError`, `FortranExecutionError`, `BinaryFormatError`, `ConfigurationError`）
 - `runner.py` - `ProcessPoolExecutor` による並列パラメータスイープのオーケストレーション
 
 ### Fortran (fortran/)
