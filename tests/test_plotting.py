@@ -11,7 +11,13 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from sqm.plotting import plot_correlation, plot_sweep_summary
+from sqm.plotting import (
+    plot_autocorrelation,
+    plot_correlation,
+    plot_sweep_summary,
+    plot_thermalization_diagnostic,
+    plot_timeseries,
+)
 
 # ============================================================
 # 1. plot_correlation() のテスト
@@ -112,3 +118,62 @@ class TestPlotSweepSummary:
             mock_plt.xlabel.assert_called_once_with(r"$\mu$")
             mock_plt.ylabel.assert_called_once_with(r"$\langle a_0 a_{N/2}^* \rangle$")
             mock_plt.title.assert_called_once_with("U=2.0, N=100")
+
+
+# ============================================================
+# 3. plot_timeseries() のテスト
+# ============================================================
+
+
+class TestPlotTimeseries:
+    """plot_timeseries() のテスト群"""
+
+    def test_plot_timeseries_ファイルを保存する(self, tmp_path: Path) -> None:
+        data = np.random.randn(200)
+        savepath = tmp_path / "timeseries.png"
+        plot_timeseries(data, savepath)
+        assert savepath.exists()
+        assert savepath.stat().st_size > 0
+
+    def test_plot_timeseries_thermalization境界を描画する(self, tmp_path: Path) -> None:
+        data = np.random.randn(200)
+        savepath = tmp_path / "timeseries_therm.png"
+        plot_timeseries(data, savepath, thermalization_skip=50, title="Test")
+        assert savepath.exists()
+
+
+# ============================================================
+# 4. plot_autocorrelation() のテスト
+# ============================================================
+
+
+class TestPlotAutocorrelation:
+    """plot_autocorrelation() のテスト群"""
+
+    def test_plot_autocorrelation_ファイルを保存する(self, tmp_path: Path) -> None:
+        acf = np.exp(-np.arange(50) / 10.0)
+        savepath = tmp_path / "acf.png"
+        plot_autocorrelation(acf, savepath)
+        assert savepath.exists()
+
+    def test_plot_autocorrelation_tau_int表示(self, tmp_path: Path) -> None:
+        acf = np.exp(-np.arange(50) / 10.0)
+        savepath = tmp_path / "acf_tau.png"
+        plot_autocorrelation(acf, savepath, tau_int=10.0, title="ACF Test")
+        assert savepath.exists()
+
+
+# ============================================================
+# 5. plot_thermalization_diagnostic() のテスト
+# ============================================================
+
+
+class TestPlotThermalizationDiagnostic:
+    """plot_thermalization_diagnostic() のテスト群"""
+
+    def test_plot_thermalization_diagnostic_ファイルを保存する(self, tmp_path: Path) -> None:
+        data = np.concatenate([np.linspace(5, 0, 100), np.random.randn(400) * 0.1])
+        savepath = tmp_path / "therm_diag.png"
+        plot_thermalization_diagnostic(data, savepath, window_size=10, thermalization_skip=100)
+        assert savepath.exists()
+        assert savepath.stat().st_size > 0

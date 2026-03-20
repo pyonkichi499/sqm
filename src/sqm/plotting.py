@@ -14,7 +14,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["configure_plot", "plot_correlation", "plot_sweep_summary"]
+__all__ = [
+    "configure_plot",
+    "plot_correlation",
+    "plot_sweep_summary",
+    "plot_timeseries",
+    "plot_autocorrelation",
+    "plot_thermalization_diagnostic",
+]
 
 _configured = False
 
@@ -122,3 +129,154 @@ def plot_sweep_summary(
     plt.title(f"{fixed_name}={fixed_value}, N={n_samples}")
     plt.savefig(savepath, bbox_inches="tight")
     logger.info("スイープサマリープロット保存完了: %s", savepath)
+
+
+def plot_timeseries(
+    data: npt.NDArray,
+    savepath: str | Path,
+    *,
+    thermalization_skip: int = 0,
+    ylabel: str = "Observable",
+    title: str = "",
+) -> None:
+    """時系列データをプロットし、thermalization 境界を表示する。
+
+    Parameters
+    ----------
+    data : npt.NDArray
+        1次元の時系列データ
+    savepath : str | Path
+        保存先パス
+    thermalization_skip : int
+        thermalization でスキップするサンプル数（境界線を描画）
+    ylabel : str
+        y軸ラベル
+    title : str
+        プロットタイトル
+    """
+    import matplotlib.pyplot as plt
+
+    configure_plot()
+    savepath = Path(savepath)
+    savepath.parent.mkdir(parents=True, exist_ok=True)
+
+    plt.close()
+    plt.figure(dpi=100)
+    plt.plot(data, linewidth=0.5)
+    if thermalization_skip > 0:
+        plt.axvline(x=thermalization_skip, color="red", linestyle="--", label="thermalization")
+        plt.legend()
+    plt.xlabel("Sample")
+    plt.ylabel(ylabel)
+    if title:
+        plt.title(title)
+    plt.savefig(savepath, bbox_inches="tight")
+    logger.info("時系列プロット保存完了: %s", savepath)
+
+
+def plot_autocorrelation(
+    acf: npt.NDArray,
+    savepath: str | Path,
+    *,
+    tau_int: float | None = None,
+    title: str = "",
+) -> None:
+    """自己相関関数をプロットする。
+
+    Parameters
+    ----------
+    acf : npt.NDArray
+        自己相関関数（ラグ0=1）
+    savepath : str | Path
+        保存先パス
+    tau_int : float | None
+        積分自己相関時間（表示用）
+    title : str
+        プロットタイトル
+    """
+    import matplotlib.pyplot as plt
+
+    configure_plot()
+    savepath = Path(savepath)
+    savepath.parent.mkdir(parents=True, exist_ok=True)
+
+    plt.close()
+    plt.figure(dpi=100)
+    lags = list(range(len(acf)))
+    plt.plot(lags, acf)
+    plt.axhline(y=0, color="gray", linestyle="--", linewidth=0.5)
+    if tau_int is not None:
+        plt.axvline(x=tau_int, color="red", linestyle="--", label=f"$\\tau_{{int}}$={tau_int:.1f}")
+        plt.legend()
+    plt.xlabel("Lag")
+    plt.ylabel(r"$\rho(k)$")
+    if title:
+        plt.title(title)
+    plt.savefig(savepath, bbox_inches="tight")
+    logger.info("自己相関プロット保存完了: %s", savepath)
+
+
+def plot_thermalization_diagnostic(
+    data: npt.NDArray,
+    savepath: str | Path,
+    *,
+    window_size: int = 10,
+    thermalization_skip: int = 0,
+    title: str = "",
+) -> None:
+    """thermalization 診断プロット：移動平均 + 定常状態境界を表示する。
+
+    Parameters
+    ----------
+    data : npt.NDArray
+        1次元の時系列データ
+    savepath : str | Path
+        保存先パス
+    window_size : int
+        移動平均のウィンドウサイズ
+    thermalization_skip : int
+        検出されたスキップ数
+    title : str
+        プロットタイトル
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np_local
+
+    configure_plot()
+    savepath = Path(savepath)
+    savepath.parent.mkdir(parents=True, exist_ok=True)
+
+    n = len(data)
+    n_windows = n // window_size
+    window_means = np_local.array(
+        [np_local.mean(data[i * window_size : (i + 1) * window_size]) for i in range(n_windows)]
+    )
+    window_centers = np_local.array(
+        [(i + 0.5) * window_size for i in range(n_windows)]
+    )
+
+    # 後半の統計
+    stationary_start = n_windows // 2
+    stationary_mean = float(np_local.mean(window_means[stationary_start:]))
+    stationary_std = float(np_local.std(window_means[stationary_start:]))
+
+    plt.close()
+    plt.figure(dpi=100)
+    plt.plot(data, alpha=0.3, linewidth=0.5, label="raw data")
+    plt.plot(window_centers, window_means, "o-", markersize=3, label="window mean")
+    plt.axhline(y=stationary_mean, color="green", linestyle="-", label="stationary mean")
+    if stationary_std > 0:
+        plt.axhspan(
+            stationary_mean - 3 * stationary_std,
+            stationary_mean + 3 * stationary_std,
+            alpha=0.2, color="green",
+        )
+    if thermalization_skip > 0:
+        plt.axvline(x=thermalization_skip, color="red", linestyle="--", label="thermalization")
+    plt.xlabel("Sample")
+    plt.ylabel("Observable")
+    plt.legend(fontsize=8)
+    if title:
+        plt.title(title)
+    plt.savefig(savepath, bbox_inches="tight")
+    logger.info("thermalization 診断プロット保存完了: %s", savepath)
