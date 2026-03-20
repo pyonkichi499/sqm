@@ -237,49 +237,24 @@ class TestReadDatEdgeCases:
         with pytest.raises(ValueError, match="ヘッダーが空です"):
             read_dat(filepath)
 
-    def test_read_dat_Nxがゼロの場合にValueError(self, tmp_path: Path) -> None:
-        """Nx=0 は有効範囲外 (1-1000) なので ValueError"""
-        filepath = tmp_path / "nx_zero.dat"
-        # Nx=0, U=1.0, mu=0.5, Ntau=10 のヘッダーレコードを作成
-        header_data = struct.pack("<i d d i", 0, 1.0, 0.5, 10)
+    @pytest.mark.parametrize("nx", [0, -1, 1001])
+    def test_read_dat_Nx範囲外でValueError(self, tmp_path: Path, nx: int) -> None:
+        """有効範囲外 (1-1000) の Nx で ValueError"""
+        filepath = tmp_path / f"nx_{nx}.dat"
+        header_data = struct.pack("<i d d i", nx, 1.0, 0.5, 10)
         record_len = len(header_data)
-        header_record = struct.pack("<i", record_len) + header_data + struct.pack("<i", record_len)
+        header_record = (
+            struct.pack("<i", record_len) + header_data + struct.pack("<i", record_len)
+        )
         filepath.write_bytes(header_record)
         with pytest.raises(ValueError, match="Nx の値が不正です"):
             read_dat(filepath)
 
-    def test_read_dat_Nxが負の場合にValueError(self, tmp_path: Path) -> None:
-        """Nx=-1 は有効範囲外 (1-1000) なので ValueError"""
-        filepath = tmp_path / "nx_negative.dat"
-        header_data = struct.pack("<i d d i", -1, 1.0, 0.5, 10)
-        record_len = len(header_data)
-        header_record = struct.pack("<i", record_len) + header_data + struct.pack("<i", record_len)
-        filepath.write_bytes(header_record)
-        with pytest.raises(ValueError, match="Nx の値が不正です"):
-            read_dat(filepath)
-
-    def test_read_dat_Nxが上限超過の場合にValueError(self, tmp_path: Path) -> None:
-        """Nx=1001 は有効範囲外 (1-1000) なので ValueError"""
-        filepath = tmp_path / "nx_too_large.dat"
-        header_data = struct.pack("<i d d i", 1001, 1.0, 0.5, 10)
-        record_len = len(header_data)
-        header_record = struct.pack("<i", record_len) + header_data + struct.pack("<i", record_len)
-        filepath.write_bytes(header_record)
-        with pytest.raises(ValueError, match="Nx の値が不正です"):
-            read_dat(filepath)
-
-    def test_read_dat_Nxが上限ちょうどなら正常読み込み(self, tmp_path: Path) -> None:
-        """Nx=1000 は有効範囲内なので正常に読み込める"""
-        filepath = tmp_path / "nx_max.dat"
-        _create_test_binary(filepath, Nx=1000, n_samples=1)
+    @pytest.mark.parametrize("nx", [1, 1000])
+    def test_read_dat_Nx境界値で正常読み込み(self, tmp_path: Path, nx: int) -> None:
+        """有効範囲の境界値で正常読み込み"""
+        filepath = tmp_path / f"nx_{nx}.dat"
+        _create_test_binary(filepath, Nx=nx, n_samples=1)
         header, body = read_dat(filepath)
-        assert header[0]["Nx"] == 1000
-        assert len(body) == 1
-
-    def test_read_dat_Nxが下限ちょうどなら正常読み込み(self, tmp_path: Path) -> None:
-        """Nx=1 は有効範囲内なので正常に読み込める"""
-        filepath = tmp_path / "nx_min.dat"
-        _create_test_binary(filepath, Nx=1, n_samples=1)
-        header, body = read_dat(filepath)
-        assert header[0]["Nx"] == 1
+        assert header[0]["Nx"] == nx
         assert len(body) == 1
