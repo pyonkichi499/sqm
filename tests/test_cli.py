@@ -600,3 +600,55 @@ def test_analyze_skip_autocorrelationフラグ(tmp_path: Path):
     runner = CliRunner()
     result = runner.invoke(cli, ["analyze", "--input", str(dat_file), "--skip-autocorrelation"])
     assert result.exit_code == 0
+
+
+# ============================================================
+# plot コマンドのテスト
+# ============================================================
+
+
+def test_plot_ヘルプが表示される():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["plot", "--help"])
+    assert result.exit_code == 0
+    assert "timeseries" in result.output
+    assert "acf" in result.output
+    assert "thermalization" in result.output
+
+
+def test_plot_timeseries_ファイルを生成する(tmp_path: Path):
+    dat_file = tmp_path / "test.dat"
+    _create_test_binary(dat_file, Nx=4, n_samples=30)
+    out_file = tmp_path / "ts.png"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["plot", "timeseries", "--input", str(dat_file), "-o", str(out_file)],
+    )
+    assert result.exit_code == 0
+    assert out_file.exists()
+
+
+def test_plot_acf_ファイルを生成する(tmp_path: Path):
+    dat_file = tmp_path / "test.dat"
+    _create_test_binary(dat_file, Nx=4, n_samples=30)
+    out_file = tmp_path / "acf.png"
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["plot", "acf", "--input", str(dat_file), "-o", str(out_file)])
+    assert result.exit_code == 0
+    assert out_file.exists()
+
+
+def test_plot_thermalization_ファイルを生成する(tmp_path: Path):
+    dat_file = tmp_path / "test.dat"
+    _create_test_binary(dat_file, Nx=4, n_samples=30)
+    out_file = tmp_path / "therm.png"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["plot", "thermalization", "--input", str(dat_file), "-o", str(out_file)],
+    )
+    assert result.exit_code == 0
+    assert out_file.exists()

@@ -16,6 +16,7 @@ from sqm.analysis import (
 )
 from sqm.config import Config, PathConfig, SimulationConfig, SweepConfig
 from sqm.fortran_io import read_dat
+from sqm.plotting import plot_autocorrelation, plot_thermalization_diagnostic, plot_timeseries
 from sqm.runner import run_sweep
 
 logger = logging.getLogger(__name__)
@@ -261,6 +262,94 @@ def analyze(input_path: str, skip_autocorrelation: bool, verbose: bool) -> None:
         click.echo(f"  tau_int: {tau:.2f}")
         click.echo(f"  有効サンプル数: {n_eff:.1f}")
         click.echo(f"  補正済み平均: {c_mean:.6f} +/- {c_err:.6f}")
+
+
+@cli.group()
+def plot() -> None:
+    """Generate plots from existing data."""
+    pass
+
+
+@plot.command("timeseries")
+@click.option(
+    "--input", "input_path", required=True,
+    type=click.Path(exists=True), help="Path to .dat binary file",
+)
+@click.option("-o", "--output", "output_path", default=None, help="Output image path")
+def plot_timeseries_cmd(input_path: str, output_path: str | None) -> None:
+    """Plot time series with thermalization boundary."""
+    filepath = Path(input_path)
+    header, body = read_dat(filepath)
+    Nx = int(header[0]["Nx"])
+    n_samples = len(body)
+    a_list = [b["a"] for b in body]
+    a_ast_list = [b["a_ast"] for b in body]
+    mid = Nx // 2
+    series = np.array(
+        [np.real(a_list[i][0] * a_ast_list[i][mid]) for i in range(n_samples)]
+    )
+    therm_skip = detect_thermalization(series) if n_samples > 20 else 0
+    out = Path(output_path) if output_path else filepath.with_suffix(".timeseries.png")
+    plot_timeseries(series, out, thermalization_skip=therm_skip, ylabel=r"$Re(a_0 a^*_{N/2})$")
+    click.echo(f"保存: {out}")
+
+
+@plot.command("acf")
+@click.option(
+    "--input", "input_path", required=True,
+    type=click.Path(exists=True), help="Path to .dat binary file",
+)
+@click.option("-o", "--output", "output_path", default=None, help="Output image path")
+@click.option("--max-lag", type=int, default=100, help="Maximum lag")
+def plot_acf_cmd(input_path: str, output_path: str | None, max_lag: int) -> None:
+    """Plot autocorrelation function."""
+    filepath = Path(input_path)
+    header, body = read_dat(filepath)
+    Nx = int(header[0]["Nx"])
+    n_samples = len(body)
+    a_list = [b["a"] for b in body]
+    a_ast_list = [b["a_ast"] for b in body]
+    mid = Nx // 2
+    series = np.array(
+        [np.real(a_list[i][0] * a_ast_list[i][mid]) for i in range(n_samples)]
+    )
+    from sqm.analysis import autocorrelation as acf_func
+
+    effective_max_lag = min(max_lag, n_samples - 1)
+    acf = acf_func(series, max_lag=effective_max_lag)
+    tau = integrated_autocorr_time(series)
+    out = Path(output_path) if output_path else filepath.with_suffix(".acf.png")
+    plot_autocorrelation(acf, out, tau_int=tau)
+    click.echo(f"保存: {out}")
+
+
+@plot.command("thermalization")
+@click.option(
+    "--input", "input_path", required=True,
+    type=click.Path(exists=True), help="Path to .dat binary file",
+)
+@click.option("-o", "--output", "output_path", default=None, help="Output image path")
+@click.option("--window-size", type=int, default=10, help="Window size")
+def plot_therm_cmd(
+    input_path: str, output_path: str | None, window_size: int,
+) -> None:
+    """Plot thermalization diagnostic."""
+    filepath = Path(input_path)
+    header, body = read_dat(filepath)
+    Nx = int(header[0]["Nx"])
+    n_samples = len(body)
+    a_list = [b["a"] for b in body]
+    a_ast_list = [b["a_ast"] for b in body]
+    mid = Nx // 2
+    series = np.array(
+        [np.real(a_list[i][0] * a_ast_list[i][mid]) for i in range(n_samples)]
+    )
+    therm_skip = detect_thermalization(series, window_size=window_size)
+    out = Path(output_path) if output_path else filepath.with_suffix(".therm.png")
+    plot_thermalization_diagnostic(
+        series, out, window_size=window_size, thermalization_skip=therm_skip,
+    )
+    click.echo(f"保存: {out}")
 
 
 @cli.group()
