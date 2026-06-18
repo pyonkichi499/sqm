@@ -1,107 +1,60 @@
-# CLAUDE.md - SQM Project Instructions
+# CLAUDE.md
 
-## Project Overview
+このファイルは、このリポジトリでコードを扱う際のClaude Code (claude.ai/code) への指針を提供します。
 
-Complex Langevin simulation for the Bose-Hubbard model on a 3D lattice. Hybrid Fortran + Python architecture where Fortran handles the numerical simulation kernel and Python handles orchestration, analysis, and visualization.
+## プロジェクト概要
 
-The simulation computes spatial correlation functions $\langle a_0 a_i^* \rangle$ using the Complex Langevin method to circumvent the sign problem that arises at finite chemical potential.
+これは複素ランジュバン法を用いたボーズ・ハバード(BH)モデル計算のための量子力学シミュレーションプロジェクトです。計算物理にはFortran、オーケストレーションとデータ可視化にはPythonを組み合わせています。
 
-## Key Architecture
+## 開発コマンド
 
-- **Fortran**: Numerical simulation kernel (RK2 solver, Complex Langevin dynamics, Box-Muller noise generation, binary I/O)
-- **Python**: Parameter sweep orchestration, Fortran binary data I/O, statistical analysis (Jackknife, autocorrelation), visualization, CLI interface, configuration management
-
-### Data Flow
-
-```
-CLI (cli.py) / runner.py
-  -> fortran_io.py       (writes params.dat in Fortran NAMELIST format)
-  -> ./a.out params.dat  (runs Fortran simulation, produces *.dat binary)
-  -> fortran_io.py       (reads Fortran unformatted binary)
-  -> analysis.py         (Jackknife, autocorrelation, thermalization, corrected error)
-  -> plotting.py         (saves figures/*.png)
-```
-
-### Fortran Binary Format
-
-The Fortran simulation writes unformatted sequential files:
-- **Header record**: `[reclen(4)] [Nx(i4)] [U(f8)] [mu(f8)] [Ntau(i4)] [reclen(4)]` = 32 bytes
-- **Body records**: `[reclen(4)] [a(Nx*c16)] [a_ast(Nx*c16)] [reclen(4)]` per sample
-
-Python reads these via `numpy.fromfile()` with structured dtypes that include the Fortran record markers (`head`/`tail` fields).
-
-## Build & Test Commands
-
+### ビルド
 ```bash
-make                          # Compile Fortran code (optimized)
-make a_debug.out              # Compile with debug flags (-g -fcheck=all -fbacktrace)
-make test                     # Run all tests (Fortran + Python)
-make test-fortran             # Run Fortran tests only
-make test-python              # Run Python tests only (rye run pytest tests/ -v)
-make lint                     # Lint Python code (rye run ruff check .)
-make format                   # Format Python code (rye run ruff format .)
-make type-check               # Type check Python code (rye run mypy .)
-make clean                    # Remove build artifacts and caches
-rye run pytest tests/ -v      # Run Python tests with verbose output
-rye run pytest tests/ -v --cov=src/sqm  # Run with coverage
+# Fortranコードのコンパイル
+gfortran complex_Langevin_BH.f90
+
+# ryeを使用してPython依存関係をインストール
+rye sync
 ```
 
-## Code Conventions
+### シミュレーションの実行
+```bash
+# メイン計算スクリプトの実行
+python calc_bh.py
+```
 
-### Python
-- 4 spaces for indentation
-- Type hints required on all function signatures
-- f-strings for string formatting
-- Line length: 100 characters (configured in pyproject.toml `[tool.ruff]`)
-- Use `from __future__ import annotations` for forward references
-- Use `Path` from `pathlib` instead of string paths
-- Logging via `logging.getLogger(__name__)`
+## アーキテクチャ
 
-### Fortran
-- Fortran 2018 standard (`-std=f2018`)
-- Use `iso_fortran_env` for portable types (`real64`, `int32`)
-- Use `ieee_arithmetic` for NaN/Inf detection
-- `implicit none` in all scopes
-- NAMELIST for parameter file I/O
+このプロジェクトはハイブリッドアーキテクチャを採用しています：
 
-### Testing
-- Test names in Japanese: `test_{descriptive scenario in Japanese}`
-  - Example: `test_空のファイルは例外を送出する()`
-  - Example: `test_ヘッダーのNxが正しく読み込まれる()`
-- TDD: Red-Green-Refactor cycle
-- All tests have a fixed random seed (`np.random.seed(42)` via conftest.py autouse fixture)
-- Fortran tests use a custom assertion framework (`assert_eq_int`, `assert_near`, etc.)
+1. **Fortranコア** (`complex_Langevin_BH.f90`): 量子シミュレーション用の複素ランジュバンアルゴリズムを実装
+   - `a.out`実行ファイルにコンパイル
+   - `params.dat`からパラメータを読み込み
+   - シミュレーションデータを`.dat`ファイルに出力
 
-## Key Files
+2. **Pythonオーケストレーション** (`calc_bh.py`): メインドライバー
+   - `wparams.py`を介してパラメータ設定を生成
+   - 各パラメータセットに対してFortranバイナリを実行
+   - `read_dat_mod.py`を使用して結果を収集
+   - matplotlibでプロットを生成
 
-### Python (src/sqm/)
-- `analysis.py` - Statistical analysis tools: Jackknife analysis, FFT-based autocorrelation, integrated autocorrelation time (Sokal window), effective sample size, thermalization detection (Geweke-inspired), data thinning, corrected error estimation, correlation computation
-- `cli.py` - Click CLI entry point with `sweep` and `config` command groups
-- `config.py` - Configuration management with nested dataclasses (`Config`, `SimulationConfig`, `PathConfig`, `SweepConfig`, `SeedConfig`) and YAML/JSON serialization
-- `experiment_log.py` - Structured experiment logging with Git info capture, environment metadata, JSON persistence, and warning generation
-- `fortran_io.py` - Fortran binary I/O (`read_dat`), Fortran NAMELIST parameter file generation (`write_params`: `&params` and `&sampling_setting`)
-- `plotting.py` - Visualization: correlation plots (`plot_correlation`), sweep summary plots
-- `exceptions.py` - Custom exception hierarchy (`SQMError`, `FortranExecutionError`, `BinaryFormatError`, `ConfigurationError`)
-- `runner.py` - Simulation orchestration with `ProcessPoolExecutor` for parallel parameter sweeps
+3. **データフロー**:
+   - `calc_bh.py` → `wparams.py` → `params.dat`
+   - `params.dat` → `a.out` → `U={U}_s={s}.dat`
+   - `U={U}_s={s}.dat` → `read_dat_mod.py` → `calc_bh.py`
 
-### Fortran (fortran/)
-- `functions_module.f90` - Core physics module:
-  - Lattice setup: `make_pos_arrays()`, `set_nn()` (nearest-neighbor table for 3D periodic lattice)
-  - Drift terms: `da()`, `da_ast()` (derivatives of the Bose-Hubbard action)
-  - RK2 solver: `do_langevin_loop_RK()` (Heun method with NaN/Inf detection)
-  - Noise: `set_dw()` (Box-Muller complex Gaussian noise)
-  - I/O: `write_header()`, `write_body()`
-  - Lattice parameters: `Ntau=6`, `Nx=Ny=Nz=6`, `Dx=216`
-- `complex_Langevin_BH.f90` - Main program: reads NAMELIST parameters, runs sampling loop, writes binary output
-- `test_functions.f90` - Fortran unit tests (11 test subroutines)
+## 主要パラメータ
 
-### Configuration
-- `pyproject.toml` - Rye project config, Ruff linting rules, mypy settings, pytest markers
-- `Makefile` - Build and test automation
+シミュレーションでは以下の物理パラメータを使用：
+- `U`: 相互作用強度（通常5-40）
+- `mu`: 化学ポテンシャル（通常0.4*U）
+- `Nsample`: 統計用のサンプル数
+- `dtau`: 時間離散化
+- `s`: 結合パラメータ
 
-## Important Notes
+## パッケージ管理
 
-- Fortran uses unformatted (binary) I/O with record markers. The Python reader must account for the 4-byte record length markers that gfortran writes before and after each record.
-- The simulation parameters `dtau`, `ds`, `s_end` are passed as Fortran double-precision literal strings (e.g., `"0.3d0"`, `"0.3d-5"`) because they are written directly into NAMELIST files read by Fortran.
-- Parallel execution via `ProcessPoolExecutor` in `runner.py` means each worker process gets independent random seeds (system entropy via `call random_seed()`).
-- The `SeedConfig` supports three modes: `"system"` (OS entropy), `"fixed"` (deterministic), and `"hybrid"` (base_seed + process_id).
+このプロジェクトはPython依存関係の管理に`rye`を使用しています。Python依存関係：
+- matplotlib (>=3.9.0)
+- seaborn (>=0.13.2)
+- numpy (>=1.26.4)
